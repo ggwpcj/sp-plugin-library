@@ -1,4 +1,5 @@
 import QtQuick 2.15
+import QtQuick.Controls 2.15
 import SP.Plugin 1.0
 
 PluginWorkspacePage {
@@ -132,19 +133,31 @@ PluginWorkspacePage {
     function downloadSelected() {
         var rows = selection.selectedRowArray()
         var started = 0
-        for (var i = 0; i < rows.length; i++) {
-            var row = Number(rows[i])
-            if (row >= 0 && row < rowsModel.count) {
-                var data = rowsModel.get(row)
-                if (data && data.downloadUrl && data.downloadUrl.length > 0) {
-                    root.startDownload(data)
-                    started++
-                }
+        var source = []
+        for (var i = 0; i < rowsModel.count; i++) {
+            if (rowsModel.get(i).checked) {
+                source.push(i)
             }
         }
-        if (rows.length === 0) {
-            root.spPlugin.showToast("请先选择要下载的文件", "warning", "gdrive-no-selection")
-        } else if (started > 0) {
+        if (source.length === 0) {
+            for (var j = 0; j < rows.length; j++) {
+                var row = Number(rows[j])
+                if (row >= 0 && row < rowsModel.count)
+                    source.push(row)
+            }
+        }
+        if (source.length === 0) {
+            root.spPlugin.showToast("请先勾选要下载的文件", "warning", "gdrive-no-selection")
+            return
+        }
+        for (var k = 0; k < source.length; k++) {
+            var data = rowsModel.get(source[k])
+            if (data && data.downloadUrl && data.downloadUrl.length > 0) {
+                root.startDownload(data)
+                started++
+            }
+        }
+        if (started > 0) {
             root.spPlugin.showToast("已创建 " + started + " 个下载任务", "success", "gdrive-download-queued")
         } else {
             root.spPlugin.showToast("所选项目中没有可下载的文件", "warning", "gdrive-no-downloadable")
@@ -211,6 +224,7 @@ PluginWorkspacePage {
                     "size": String(item.size || item.sizeDisplay || ""),
                     "type": String(item.type || "file"),
                     "downloadUrl": String(item.downloadUrl || ""),
+                    "checked": false,
                     "entry": item
                 })
             }
@@ -337,8 +351,9 @@ PluginWorkspacePage {
                 required property string size
                 required property string type
 
-                property var lastPressTime: 0
-                property int lastPressRow: -1
+                property real colCheck: table.width * 0.09
+                property real colName: table.width * 0.44
+                property real colSize: table.width * 0.18
 
                 width: table.width
                 height: table.rowHeight
@@ -352,14 +367,6 @@ PluginWorkspacePage {
 
                 onRowPressed: function(row, data, modifiers) {
                     table.standardSelectRow(row, modifiers)
-                    var now = new Date().getTime()
-                    if (now - lastPressTime < 350 && lastPressRow === row) {
-                        lastPressTime = 0
-                        root.openRow(data)
-                    } else {
-                        lastPressTime = now
-                        lastPressRow = row
-                    }
                 }
                 onRowContextRequested: function(row, data, sourceItem, x, y) {
                     table.standardSelectContextRow(row)
@@ -368,11 +375,25 @@ PluginWorkspacePage {
                     menu.openForActionsAtItem(root.contextActions(data), sourceItem, x, y)
                 }
 
+                CheckBox {
+                    id: checkBox
+                    anchors.left: parent.left
+                    anchors.leftMargin: PluginTheme.dp(4)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: PluginTheme.dp(24)
+                    height: PluginTheme.dp(24)
+                    checked: rowsModel.get(index) ? rowsModel.get(index).checked : false
+                    onToggled: function() {
+                        if (index >= 0 && index < rowsModel.count) {
+                            rowsModel.setProperty(index, "checked", checked)
+                        }
+                    }
+                }
                 Text {
                     anchors.left: parent.left
+                    anchors.leftMargin: colCheck + PluginTheme.dp(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: PluginTheme.dp(8)
-                    width: table.width * 0.56
+                    width: colName - PluginTheme.dp(8)
                     elide: Text.ElideMiddle
                     text: name
                     color: PluginTheme.text
@@ -380,9 +401,9 @@ PluginWorkspacePage {
                 }
                 Text {
                     anchors.left: parent.left
+                    anchors.leftMargin: colCheck + colName + PluginTheme.dp(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: table.width * 0.56 + PluginTheme.dp(8)
-                    width: table.width * 0.22
+                    width: colSize - PluginTheme.dp(8)
                     elide: Text.ElideRight
                     text: size
                     color: PluginTheme.mutedText
@@ -390,11 +411,27 @@ PluginWorkspacePage {
                 }
                 Text {
                     anchors.left: parent.left
+                    anchors.leftMargin: colCheck + colName + colSize + PluginTheme.dp(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.leftMargin: table.width * 0.78 + PluginTheme.dp(8)
+                    width: table.width - colCheck - colName - colSize - PluginTheme.dp(8)
+                    elide: Text.ElideRight
                     text: type === "folder" ? "文件夹" : "文件"
                     color: type === "folder" ? PluginTheme.primary : PluginTheme.mutedText
                     font.pixelSize: PluginTheme.smallFontSize
+                }
+                AppButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: PluginTheme.dp(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: type === "folder" ? "进入" : "下载"
+                    outlineGhost: false
+                    onClicked: {
+                        if (type === "folder") {
+                            root.openRow(rowsModel.get(index))
+                        } else {
+                            root.startDownload(rowsModel.get(index))
+                        }
+                    }
                 }
             }
         }
@@ -402,7 +439,7 @@ PluginWorkspacePage {
         Text {
             id: hintText
             width: parent.width
-            text: "提示：单击行选中，双击文件夹进入，双击文件下载；右键菜单可进入/下载/刷新/返回上级。"
+            text: "提示：勾选文件后点\"开始下载\"；点\"进入\"进入子文件夹；右键菜单可进入/下载/刷新/返回上级。"
             color: PluginTheme.mutedText
             font.pixelSize: PluginTheme.smallFontSize
             wrapMode: Text.Wrap
