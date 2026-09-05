@@ -12,6 +12,13 @@ PluginWorkspacePage {
     property int contextRowIndex: -1
     property var contextRowData: null
     property string totalSizeText: ""
+    property var queueByRequest: ({})
+    property var queueByTask: ({})
+    property int queuedCount: 0
+    property int finishedCount: 0
+    property int failedCount: 0
+    property bool autoRetry: true
+    property var pendingRetry: ({})
 
     function chooseDirectory() {
         root.spPlugin.chooseDirectory("选择保存目录", root.saveDirectory)
@@ -132,17 +139,26 @@ PluginWorkspacePage {
     function startDownload(entry) {
         if (!entry || !entry.downloadUrl)
             return
-        root.spPlugin.download({
+        var key = "gdrive-" + String(entry.id || entry.name || "")
+        var requestId = root.spPlugin.download({
             "url": String(entry.downloadUrl),
             "directory": root.saveDirectory,
             "fileName": String(entry.name || "file"),
             "displayName": String(entry.name || "file"),
-            "taskKey": "gdrive-" + String(entry.id || entry.name || ""),
+            "taskKey": key,
             "kind": "gdrive",
             "route": root.route,
             "autoRename": true,
             "showProgressToast": true
         })
+        root.queueByRequest[String(requestId)] = {
+            "key": key,
+            "name": String(entry.name || "file"),
+            "taskId": "",
+            "status": "submitted",
+            "retries": 0
+        }
+        root.queuedCount++
     }
 
     function downloadSelected() {
@@ -173,10 +189,24 @@ PluginWorkspacePage {
             }
         }
         if (started > 0) {
-            root.spPlugin.showToast("已创建 " + started + " 个下载任务", "success", "gdrive-download-queued")
+            root.spPlugin.showToast("已加入下载队列 " + started + " 个任务", "success", "gdrive-download-queued")
         } else {
             root.spPlugin.showToast("所选项目中没有可下载的文件", "warning", "gdrive-no-downloadable")
         }
+    }
+
+    function retryTask(key) {
+        var found = null
+        for (var id in root.queueByTask) {
+            if (id === key || root.queueByTask[id].key === key) {
+                found = root.queueByTask[id]
+                break
+            }
+        }
+        if (!found || !found.taskId)
+            return
+        found.status = "retrying"
+        root.spPlugin.controlDownload("retry", String(found.taskId), false)
     }
 
     function contextActions(row) {
@@ -267,6 +297,90 @@ PluginWorkspacePage {
                 root.spPlugin.set("saveDirectory", path)
             }
         }
+
+        function onDownloadStarted(requestId, response) {
+            var info = root.queueByRequest[String(requestId)]
+            if (!info) {
+                info = {"key": "", "name": "下载任务", "taskId": "", "status": "submitted", "retries": 0}
+                root.queueByRequest[String(requestId)] = info
+            }
+            var taskId = ""
+            if (response) {
+                taskId = String(response.taskId || response.task_id || response.id || "")
+            }
+            info.taskId = taskId
+            if (response && response.ok === false) {
+                info.status = "failed"
+                root.failedCount++
+                root.queuedCount = Math.max(0, root.queuedCount - 1)
+                root.spPlugin.showToast("任务创建失败：" + String(info.name), "error", "gdrive-queue-fail")
+                return
+            }
+            if (taskId.length > 0) {
+                root.queueByTask[String(taskId)] = info
+            }
+            info.status = "queued"
+            queueStatusDirty()
+        }
+
+        function onDownloadProgress(task) {
+            if (!task)
+                return
+            var taskId = String(task.taskId || task.task_id || task.id || "")
+            if (taskId.length === 0)
+                return
+            var info = root.queueByTask[String(taskId)]
+            if (!info)
+                return
+            var state = String(task.state || task.status || "")
+            var bytesReceived = Number(task.receivedBytes || task.completedBytes || task.bytesReceived || 0)
+            var bytesTotal = Number(task.totalBytes || task.total || 0)
+            var isDone = /^done$|^completed$|^finished$/.test(state)
+            var isFailed = /fail|error|abort|interrupt|timeout/i.test(state)
+            if (isDone || (bytesTotal > 0 && bytesReceived >= bytesTotal)) {
+                info.status = "completed"
+                root.finishedCount++
+                root.queuedCount = Math.max(0, root.queuedCount - 1)
+                root.spPlugin.showToast("下载完成：" + String(info.name), "success", "gdrive-done-" + taskId)
+            } else if (isFailed) {
+                if (root.autoRetry && info.retries < 3 && info.taskId.length > 0) {
+                    info.retries++
+                    info.status = "retrying"
+                    root.spPlugin.log("下载失败，自动重试 " + info.retries + "/3：" + String(info.name))
+                    root.spPlugin.controlDownload("retry", info.taskId, false)
+                } else {
+                    info.status = "failed"
+                    root.failedCount++
+                    root.queuedCount = Math.max(0, root.queuedCount - 1)
+                    root.spPlugin.showToast("下载失败：" + String(info.name), "error", "gdrive-fail-" + taskId)
+                }
+            } else {
+                info.status = "running"
+                root.queuedCount = Math.max(0, root.queuedCount - 1)
+            }
+            queueStatusDirty()
+        }
+
+        function onDownloadControlFinished(requestId, response) {
+            queueStatusDirty()
+        }
+    }
+
+    function queueStatusDirty() {
+        var running = 0
+        var done = 0
+        var fail = 0
+        for (var id in root.queueByTask) {
+            var info = root.queueByTask[id]
+            var s = String(info.status)
+            if (s === "running")
+                running++
+            else if (s === "completed")
+                done++
+            else if (s === "failed")
+                fail++
+        }
+        queueCountText.text = "队列：进行中 " + running + " · 完成 " + done + " · 失败 " + fail + "（自动重试开）"
     }
 
     Column {
@@ -394,8 +508,8 @@ PluginWorkspacePage {
             height: Math.max(80, parent.height
                              - linkRow.implicitHeight - pathRow.implicitHeight
                              - breadcrumbRow.implicitHeight - headerRow.implicitHeight
-                             - hintText.implicitHeight
-                             - parent.spacing * 6)
+                             - queueCountText.implicitHeight - hintText.implicitHeight
+                             - parent.spacing * 7)
             model: rowsModel
             selectionController: selection
             standardSelectionEnabled: true
@@ -494,9 +608,18 @@ PluginWorkspacePage {
         }
 
         Text {
+            id: queueCountText
+            width: parent.width
+            text: "队列：进行中 0 · 完成 0 · 失败 0（自动重试开）"
+            color: PluginTheme.primary
+            font.pixelSize: PluginTheme.smallFontSize
+            wrapMode: Text.Wrap
+        }
+
+        Text {
             id: hintText
             width: parent.width
-            text: "提示：勾选文件后点\"开始下载\"；点\"进入\"进入子文件夹；右键菜单可进入/下载/刷新/返回上级。"
+            text: "提示：勾选文件后点\"开始下载\"加入队列；点\"进入\"进入子文件夹；右键菜单可进入/下载/刷新/返回上级。"
             color: PluginTheme.mutedText
             font.pixelSize: PluginTheme.smallFontSize
             wrapMode: Text.Wrap
