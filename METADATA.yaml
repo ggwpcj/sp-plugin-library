@@ -1,0 +1,26 @@
+启用: true
+插件ID: gdrive-downloader
+插件名称: SP-谷歌网盘下载
+插件版本: "1"
+插件API版本: 1
+
+界面:
+  入口: ui/main.qml
+  首选宽度: 560
+  首选高度: 400
+  最小宽度: 400
+  最小高度: 300
+
+插件菜单:
+  名称: SP-谷歌网盘下载
+  启用: true
+  显示: true
+  调用: open_gdrive_downloader
+  子级: []
+  局部热键: []
+  全局热键: []
+
+后端入口: worker/main.py
+
+配置文件:
+- gdrive-downloader.json
