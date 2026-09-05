@@ -83,7 +83,7 @@ def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     return {"url": direct_url, "fileName": file_name}
 
 
-def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, str, str]:
+def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, str, str, int]:
     response = _fetch(
         context,
         f"https://drive.google.com/uc?export=download&id={file_id}",
@@ -94,7 +94,7 @@ def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, s
     if not response.get("ok"):
         final_url = response.get("url") or ""
         if "drive.usercontent.google.com" in final_url:
-            return final_url, "", final_url
+            return final_url, "", final_url, 0
         raise RuntimeError(response.get("error") or "请求失败")
 
     final_url = response.get("url") or ""
@@ -103,10 +103,15 @@ def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, s
     content_disposition = header_value(headers, "content-disposition")
 
     size_display = ""
+    size_bytes = 0
     if "drive.usercontent.google.com" in (final_url or ""):
         content_length = header_value(headers, "content-length")
-        size_display = format_size(content_length)
-        return final_url, size_display, final_url
+        try:
+            size_bytes = int(content_length or 0)
+        except (TypeError, ValueError):
+            size_bytes = 0
+        size_display = format_size(size_bytes)
+        return final_url, size_display, final_url, size_bytes
 
     if (body or "").lstrip().startswith("<"):
         action = extract_download_action(body)
@@ -116,10 +121,10 @@ def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, s
         direct_url = f"{base}{sep}id={file_id}&export=download"
         if confirm:
             direct_url += f"&confirm={confirm}"
-        return direct_url, "", direct_url
+        return direct_url, "", direct_url, 0
 
     return final_url or f"https://drive.google.com/uc?export=download&id={file_id}", \
-        size_display, final_url or f"https://drive.google.com/uc?export=download&id={file_id}"
+        size_display, final_url or f"https://drive.google.com/uc?export=download&id={file_id}", 0
 
 
 def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -152,16 +157,20 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("文件夹为空，或无法解析内容")
 
     total = len(items)
+    total_bytes = 0
     for index, item in enumerate(items):
         context.check_cancelled()
         if item.get("type") == "file":
             item["downloadUrl"] = ""
             try:
-                download_url, size_display, resolved_url = _probe_file(context, item["id"], route)
+                download_url, size_display, resolved_url, size_bytes = _probe_file(context, item["id"], route)
                 item["downloadUrl"] = download_url
                 item["size"] = size_display
+                item["sizeBytes"] = size_bytes
+                total_bytes += size_bytes
             except Exception as error:
                 item["size"] = ""
+                item["sizeBytes"] = 0
                 context.log(f"获取文件信息失败对 {item.get('name')}: {error}")
         context.progress(
             0.1 + 0.85 * (index + 1) / total,
@@ -170,4 +179,4 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
 
     context.progress(1.0, "解析完成")
 
-    return {"folderId": folder_id, "items": items}
+    return {"folderId": folder_id, "items": items, "totalSize": total_bytes}

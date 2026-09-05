@@ -11,9 +11,24 @@ PluginWorkspacePage {
     property string route: String(root.spPlugin.get("route", "auto"))
     property int contextRowIndex: -1
     property var contextRowData: null
+    property string totalSizeText: ""
 
     function chooseDirectory() {
         root.spPlugin.chooseDirectory("选择保存目录", root.saveDirectory)
+    }
+
+    function formatBytes(bytes) {
+        var size = Number(bytes || 0)
+        if (!(size > 0))
+            return "未知"
+        var units = ["B", "KB", "MB", "GB", "TB"]
+        var value = size
+        var index = 0
+        while (value >= 1024 && index < units.length - 1) {
+            value /= 1024
+            index++
+        }
+        return (index === 0 ? String(Math.round(value)) : (Math.round(value * 10) / 10).toFixed(1)) + " " + units[index]
     }
 
     function routeLabelText() {
@@ -210,6 +225,7 @@ PluginWorkspacePage {
             root.requestId = ""
             if (!response.ok) {
                 root.statusText = "解析失败"
+                root.totalSizeText = ""
                 root.spPlugin.showToast(String(response.error || "解析失败"), "error", "gdrive-resolve-fail")
                 return
             }
@@ -241,7 +257,8 @@ PluginWorkspacePage {
                     })
                 }
             }
-            root.statusText = "共 " + rowsModel.count + " 项，双击文件夹进入，右键选择操作，选中后点击\"开始下载\""
+            root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
+            root.statusText = "共 " + rowsModel.count + " 项，总大小 " + root.totalSizeText + "；勾选文件后点击\"开始下载\""
         }
 
         function onDirectorySelected(requestId, path, completed) {
@@ -332,13 +349,53 @@ PluginWorkspacePage {
             }
         }
 
+        Row {
+            id: headerRow
+            width: table.width
+            height: PluginTheme.controlHeight
+            visible: rowsModel.count > 0
+
+            Item {
+                width: table.width * 0.09
+                height: parent.height
+            }
+            Text {
+                width: table.width * 0.44
+                height: parent.height
+                verticalAlignment: Text.AlignVCenter
+                text: "文件名"
+                color: PluginTheme.mutedText
+                font.pixelSize: PluginTheme.smallFontSize
+                font.bold: true
+            }
+            Text {
+                width: table.width * 0.18
+                height: parent.height
+                verticalAlignment: Text.AlignVCenter
+                text: "大小"
+                color: PluginTheme.mutedText
+                font.pixelSize: PluginTheme.smallFontSize
+                font.bold: true
+            }
+            Text {
+                width: table.width - table.width * 0.09 - table.width * 0.44 - table.width * 0.18
+                height: parent.height
+                verticalAlignment: Text.AlignVCenter
+                text: "类型 / 操作"
+                color: PluginTheme.mutedText
+                font.pixelSize: PluginTheme.smallFontSize
+                font.bold: true
+            }
+        }
+
         AppTableView {
             id: table
             width: parent.width
             height: Math.max(80, parent.height
                              - linkRow.implicitHeight - pathRow.implicitHeight
-                             - breadcrumbRow.implicitHeight - hintText.implicitHeight
-                             - parent.spacing * 5)
+                             - breadcrumbRow.implicitHeight - headerRow.implicitHeight
+                             - hintText.implicitHeight
+                             - parent.spacing * 6)
             model: rowsModel
             selectionController: selection
             standardSelectionEnabled: true
