@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 
 # 内部文档与敏感信息（禁止上传）
-上传流程.md
 GITHUB_TOKEN.txt
 Github上傳賬號-0905.txt
 *.token
