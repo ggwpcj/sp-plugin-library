@@ -205,8 +205,9 @@ PluginWorkspacePage {
         }
         if (!found || !found.taskId)
             return
-        found.status = "retrying"
-        root.spPlugin.controlDownload("retry", String(found.taskId), false)
+        found.status = "resuming"
+        root.spPlugin.log("手动续传：" + String(found.name))
+        root.spPlugin.controlDownload("resume", String(found.taskId), false)
     }
 
     function contextActions(row) {
@@ -343,11 +344,11 @@ PluginWorkspacePage {
                 root.queuedCount = Math.max(0, root.queuedCount - 1)
                 root.spPlugin.showToast("下载完成：" + String(info.name), "success", "gdrive-done-" + taskId)
             } else if (isFailed) {
-                if (root.autoRetry && info.retries < 3 && info.taskId.length > 0) {
+                if (root.autoRetry && info.retries < 5 && info.taskId.length > 0) {
                     info.retries++
-                    info.status = "retrying"
-                    root.spPlugin.log("下载失败，自动重试 " + info.retries + "/3：" + String(info.name))
-                    root.spPlugin.controlDownload("retry", info.taskId, false)
+                    info.status = "resuming"
+                    root.spPlugin.log("下载中断，自动续传 " + info.retries + "/5：" + String(info.name))
+                    root.spPlugin.controlDownload("resume", info.taskId, false)
                 } else {
                     info.status = "failed"
                     root.failedCount++
@@ -373,14 +374,14 @@ PluginWorkspacePage {
         for (var id in root.queueByTask) {
             var info = root.queueByTask[id]
             var s = String(info.status)
-            if (s === "running")
+            if (s === "running" || s === "resuming")
                 running++
             else if (s === "completed")
                 done++
             else if (s === "failed")
                 fail++
         }
-        queueCountText.text = "队列：进行中 " + running + " · 完成 " + done + " · 失败 " + fail + "（自动重试开）"
+        queueCountText.text = "队列：进行中 " + running + " · 完成 " + done + " · 失败 " + fail + "（失败自动续传）"
     }
 
     Column {
@@ -610,7 +611,7 @@ PluginWorkspacePage {
         Text {
             id: queueCountText
             width: parent.width
-            text: "队列：进行中 0 · 完成 0 · 失败 0（自动重试开）"
+            text: "队列：进行中 0 · 完成 0 · 失败 0（失败自动续传）"
             color: PluginTheme.primary
             font.pixelSize: PluginTheme.smallFontSize
             wrapMode: Text.Wrap
