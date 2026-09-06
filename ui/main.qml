@@ -515,8 +515,8 @@ PluginWorkspacePage {
             height: Math.max(80, parent.height
                              - linkRow.implicitHeight - pathRow.implicitHeight
                              - breadcrumbRow.implicitHeight - headerRow.implicitHeight
-                             - queueCountText.implicitHeight - hintText.implicitHeight
-                             - parent.spacing * 7)
+                             - queueCountText.implicitHeight
+                             - parent.spacing * 6)
             model: rowsModel
             selectionController: selection
             standardSelectionEnabled: true
@@ -619,15 +619,6 @@ PluginWorkspacePage {
             width: parent.width
             text: "队列：进行中 0 · 完成 0 · 失败 0（失败自动续传）"
             color: PluginTheme.primary
-            font.pixelSize: PluginTheme.smallFontSize
-            wrapMode: Text.Wrap
-        }
-
-        Text {
-            id: hintText
-            width: parent.width
-            text: "提示：勾选文件后点\"开始下载\"加入队列；点\"进入\"进入子文件夹；右键菜单可进入/下载/刷新/返回上级。"
-            color: PluginTheme.mutedText
             font.pixelSize: PluginTheme.smallFontSize
             wrapMode: Text.Wrap
         }
