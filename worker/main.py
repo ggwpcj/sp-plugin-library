@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+import re
 from typing import Any
 
 from .gdrive import (
@@ -159,10 +161,16 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     if not items:
         raise RuntimeError("文件夹为空，或无法解析内容")
 
+    folder_name = ""
+    title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
+    if title_match:
+        folder_name = html.unescape(title_match.group(1)).strip()
+
     total = len(items)
     total_bytes = 0
     for index, item in enumerate(items):
         context.check_cancelled()
+        item["path"] = f"/{folder_name}" if folder_name else "/"
         if item.get("type") == "file":
             item["downloadUrl"] = ""
             try:
@@ -190,7 +198,14 @@ class _Budget:
         self.remaining = limit
 
 
-def _collect_tree(context: Any, folder_id: str, route: str, depth: int, budget: _Budget) -> list[dict[str, Any]]:
+def _collect_tree(
+    context: Any,
+    folder_id: str,
+    route: str,
+    depth: int,
+    budget: _Budget,
+    path: str = "/",
+) -> list[dict[str, Any]]:
     if depth > _MAX_TREE_DEPTH:
         context.log(f"目录层级超过上限 {_MAX_TREE_DEPTH}，已截断")
         return []
@@ -211,6 +226,12 @@ def _collect_tree(context: Any, folder_id: str, route: str, depth: int, budget: 
         raise RuntimeError("该文件夹可能未公开分享，或链接已失效")
 
     items = parse_folder_page(body)
+    folder_name = ""
+    title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
+    if title_match:
+        folder_name = html.unescape(title_match.group(1)).strip()
+    current_path = f"{path}/{folder_name}" if folder_name else path
+
     nodes: list[dict[str, Any]] = []
     for item in items:
         context.check_cancelled()
@@ -218,11 +239,12 @@ def _collect_tree(context: Any, folder_id: str, route: str, depth: int, budget: 
             context.log("目录内容过多，已达到上限，剩余目录已截断")
             break
         budget.remaining -= 1
+        item["path"] = current_path
         if item.get("type") == "folder":
             item["downloadUrl"] = ""
             item["size"] = ""
             item["sizeBytes"] = 0
-            item["children"] = _collect_tree(context, item["id"], route, depth + 1, budget)
+            item["children"] = _collect_tree(context, item["id"], route, depth + 1, budget, current_path)
             nodes.append(item)
         else:
             item["children"] = []
