@@ -14,6 +14,9 @@ from .gdrive import (
     parse_folder_page,
 )
 
+_MAX_TREE_DEPTH = 100
+_MAX_TREE_ITEMS = 5000
+
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -180,3 +183,95 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     context.progress(1.0, "解析完成")
 
     return {"folderId": folder_id, "items": items, "totalSize": total_bytes}
+
+
+class _Budget:
+    def __init__(self, limit: int) -> None:
+        self.remaining = limit
+
+
+def _collect_tree(context: Any, folder_id: str, route: str, depth: int, budget: _Budget) -> list[dict[str, Any]]:
+    if depth > _MAX_TREE_DEPTH:
+        context.log(f"目录层级超过上限 {_MAX_TREE_DEPTH}，已截断")
+        return []
+    if budget.remaining <= 0:
+        return []
+
+    response = _fetch(
+        context,
+        f"https://drive.google.com/embeddedfolderview?id={folder_id}",
+        8 * 1024 * 1024,
+        route,
+    )
+    if not response.get("ok"):
+        raise RuntimeError(f"获取文件夹内容失败: {response.get('error') or '未知错误'}")
+
+    body = response.get("body") or ""
+    if is_denied_page(body):
+        raise RuntimeError("该文件夹可能未公开分享，或链接已失效")
+
+    items = parse_folder_page(body)
+    nodes: list[dict[str, Any]] = []
+    for item in items:
+        context.check_cancelled()
+        if budget.remaining <= 0:
+            context.log("目录内容过多，已达到上限，剩余目录已截断")
+            break
+        budget.remaining -= 1
+        if item.get("type") == "folder":
+            item["downloadUrl"] = ""
+            item["size"] = ""
+            item["sizeBytes"] = 0
+            item["children"] = _collect_tree(context, item["id"], route, depth + 1, budget)
+            nodes.append(item)
+        else:
+            item["children"] = []
+            item["downloadUrl"] = ""
+            try:
+                download_url, size_display, _resolved, size_bytes = _probe_file(context, item["id"], route)
+                item["downloadUrl"] = download_url
+                item["size"] = size_display
+                item["sizeBytes"] = size_bytes
+            except Exception as error:
+                item["size"] = ""
+                item["sizeBytes"] = 0
+                context.log(f"获取文件信息失败对 {item.get('name')}: {error}")
+            nodes.append(item)
+    return nodes
+
+
+def list_folder_tree(context: Any, params: dict[str, Any]) -> dict[str, Any]:
+    context.check_cancelled()
+    url = str(params.get("url") or "").strip()
+    route = str(params.get("route") or "auto").strip() or "auto"
+
+    folder_id = folder_id_from_url(url)
+    if not folder_id:
+        raise ValueError("无法识别谷歌网盘文件夹链接，请粘贴分享链接")
+
+    context.progress(0.05, "正在获取完整目录树")
+
+    budget = _Budget(_MAX_TREE_ITEMS)
+    tree = _collect_tree(context, folder_id, route, 0, budget)
+    total_files = 0
+    total_bytes = 0
+
+    def _count(nodes: list[dict[str, Any]]) -> None:
+        nonlocal total_files, total_bytes
+        for node in nodes:
+            if node.get("type") == "folder":
+                _count(node.get("children") or [])
+            else:
+                total_files += 1
+                total_bytes += int(node.get("sizeBytes") or 0)
+
+    _count(tree)
+    context.progress(1.0, "目录树解析完成")
+
+    return {
+        "folderId": folder_id,
+        "tree": tree,
+        "totalFiles": total_files,
+        "totalSize": total_bytes,
+        "truncated": budget.remaining <= 0,
+    }

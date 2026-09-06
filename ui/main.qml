@@ -19,6 +19,10 @@ PluginWorkspacePage {
     property int failedCount: 0
     property bool autoRetry: true
     property var pendingRetry: ({})
+    property var treeData: []
+    property bool treeLoaded: false
+    property string treeRootUrl: ""
+    property var expandedSet: ({})
 
     function chooseDirectory() {
         root.spPlugin.chooseDirectory("选择保存目录", root.saveDirectory)
@@ -66,13 +70,13 @@ PluginWorkspacePage {
         root.chooseRoute(action)
     }
 
-    function loadFolders(url) {
+    function loadFolderTree(url) {
         linkField.text = url
-        root.statusText = "正在获取文件夹内容..."
-        root.requestId = root.spPlugin.call("list_folder", {"url": url, "route": root.route}, 120000)
+        root.statusText = "正在获取完整目录树..."
+        root.requestId = root.spPlugin.call("list_folder_tree", {"url": url, "route": root.route}, 300000)
     }
 
-    function loadFile(url) {
+    function loadFileUrl(url) {
         linkField.text = url
         root.statusText = "正在获取文件下载地址..."
         root.requestId = root.spPlugin.call("resolve_download", {"url": url, "route": root.route}, 120000)
@@ -88,58 +92,75 @@ PluginWorkspacePage {
             root.spPlugin.showToast("链接必须以 https://drive.google.com/ 开头", "warning", "gdrive-bad-link")
             return
         }
-        navModel.clear()
+        root.treeData = []
+        root.treeLoaded = false
+        root.treeRootUrl = link
         if (/\/drive\/folders\//.test(link)) {
-            navModel.append({"name": "网盘根目录", "url": link})
-            root.loadFolders(link)
+            root.loadFolderTree(link)
         } else {
-            navModel.append({"name": "文件下载", "url": link})
-            root.loadFile(link)
+            root.loadFileUrl(link)
         }
     }
 
-    function openRow(row) {
+    function flattenTree(nodes, depth, expandedSet, rows) {
+        for (var i = 0; i < nodes.length; i++) {
+            var node = nodes[i]
+            var isFolder = String(node.type || "file") === "folder"
+            rows.push({
+                "rowId": String(node.id || ("node-" + rows.length)),
+                "name": String(node.name || ""),
+                "size": String(node.size || ""),
+                "type": isFolder ? "folder" : "file",
+                "downloadUrl": String(node.downloadUrl || ""),
+                "checked": false,
+                "depth": depth,
+                "hasChildren": isFolder && (node.children || []).length > 0,
+                "expanded": expandedSet.indexOf(String(node.id || "")) >= 0,
+                "entry": node
+            })
+            if (isFolder && expandedSet.indexOf(String(node.id || "")) >= 0) {
+                flattenTree(node.children || [], depth + 1, expandedSet, rows)
+            }
+        }
+    }
+
+    function renderTree() {
+        rowsModel.clear()
+        var expandedSet = []
+        for (var id in root.expandedSet) {
+            expandedSet.push(id)
+        }
+        var rows = []
+        if (root.treeData && root.treeData.length > 0) {
+            flattenTree(root.treeData, 0, expandedSet, rows)
+        }
+        for (var i = 0; i < rows.length; i++) {
+            rowsModel.append(rows[i])
+        }
+        if (rows.length === 0) {
+            root.statusText = "目录为空或已全部折叠"
+            root.totalSizeText = ""
+        } else {
+            root.statusText = "共显示 " + rows.length + " 项；单击文件夹行展开/折叠，勾选文件后点\"开始下载\""
+        }
+    }
+
+    function toggleRow(row) {
         if (!row)
             return
         if (row.type === "folder") {
-            var entry = row.entry || {}
-            var folderId = String(row.rowId || row.id || entry.id || "")
-            if (!folderId || folderId.indexOf("row-") === 0) {
-                root.spPlugin.showToast("无法识别文件夹，不能进入", "error", "gdrive-bad-folder")
+            var id = String(row.rowId || row.id || "")
+            if (!id || id.indexOf("row-") === 0 || id.indexOf("node-") === 0)
                 return
-            }
-            var url = "https://drive.google.com/drive/folders/" + folderId
-            navModel.append({"name": String(row.name || entry.name || "文件夹"), "url": url})
-            root.loadFolders(url)
+            if (root.expandedSet[id])
+                delete root.expandedSet[id]
+            else
+                root.expandedSet[id] = true
+            root.renderTree()
         } else if (row.type === "file") {
-            root.startDownload(row)
+            if (row.downloadUrl)
+                root.startDownload(row)
         }
-    }
-
-    function goUp() {
-        if (navModel.count > 1) {
-            navModel.remove(navModel.count - 1)
-            root.loadCurrent()
-        }
-    }
-
-    function goToBreadcrumb(index) {
-        if (index < 0 || index >= navModel.count - 1)
-            return
-        navModel.remove(index + 1, navModel.count - index - 1)
-        root.loadCurrent()
-    }
-
-    function loadCurrent() {
-        if (navModel.count > 0)
-            root.loadFolders(String(navModel.get(navModel.count - 1).url))
-    }
-
-    function refreshCurrent() {
-        if (navModel.count > 0 && /drive\/folders\//.test(String(navModel.get(navModel.count - 1).url)))
-            root.loadCurrent()
-        else
-            root.parseLink()
     }
 
     function startDownload(entry) {
@@ -219,28 +240,52 @@ PluginWorkspacePage {
     function contextActions(row) {
         var actions = []
         if (row && row.type === "folder")
-            actions.push({"text": "进入文件夹", "action": "open-folder"})
+            actions.push({"text": "展开/折叠该文件夹", "action": "toggle-folder"})
         if (row && row.type === "file")
             actions.push({"text": "下载该文件", "action": "download-one"})
         actions.push({"separator": true})
-        if (navModel.count > 1)
-            actions.push({"text": "返回上级目录", "action": "go-up"})
-        actions.push({"text": "刷新当前文件夹", "action": "refresh"})
+        actions.push({"text": "展开全部目录", "action": "expand-all"})
+        actions.push({"text": "折叠全部目录", "action": "collapse-all"})
+        actions.push({"text": "刷新当前链接", "action": "refresh"})
         actions.push({"separator": true})
         actions.push({"text": "下载选中项", "action": "download-selected"})
         return actions
     }
 
+    function expandNodeRecursive(node, set) {
+        if (!node || node.type !== "folder")
+            return
+        var id = String(node.id || "")
+        if (id && id.indexOf("row-") !== 0 && id.indexOf("node-") !== 0)
+            set[id] = true
+        var children = node.children || []
+        for (var i = 0; i < children.length; i++) {
+            expandNodeRecursive(children[i], set)
+        }
+    }
+
     function handleContextAction(action) {
         var row = root.contextRowData
-        if (action === "open-folder") {
-            root.openRow(row)
+        if (action === "toggle-folder") {
+            root.toggleRow(row)
         } else if (action === "download-one") {
             root.startDownload(row)
-        } else if (action === "go-up") {
-            root.goUp()
+        } else if (action === "expand-all") {
+            root.expandedSet = ({})
+            for (var i = 0; i < root.treeData.length; i++) {
+                expandNodeRecursive(root.treeData[i], root.expandedSet)
+            }
+            root.renderTree()
+            root.spPlugin.showToast("已展开全部目录", "info", "gdrive-expand-all")
+        } else if (action === "collapse-all") {
+            root.expandedSet = ({})
+            root.renderTree()
+            root.spPlugin.showToast("已折叠全部目录", "info", "gdrive-collapse-all")
         } else if (action === "refresh") {
-            root.refreshCurrent()
+            if (root.treeRootUrl.length > 0)
+                root.loadFolderTree(root.treeRootUrl)
+            else
+                root.parseLink()
         } else if (action === "download-selected") {
             root.downloadSelected()
         }
@@ -267,6 +312,19 @@ PluginWorkspacePage {
                 return
             }
             var result = response.result || {}
+            if (result.tree) {
+                root.treeData = result.tree
+                root.treeLoaded = true
+                root.expandedSet = ({})
+                for (var ti = 0; ti < root.treeData.length; ti++) {
+                    expandNodeRecursive(root.treeData[ti], root.expandedSet)
+                }
+                root.renderTree()
+                root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
+                var extra = result.truncated ? "；部分目录因内容过多已截断" : ""
+                root.statusText = "目录树共 " + Number(result.totalFiles || 0) + " 个文件，总大小 " + root.totalSizeText + extra + "；单击文件夹行展开/折叠，勾选文件后点\"开始下载\""
+                return
+            }
             var items = result.items || []
             rowsModel.clear()
             for (var i = 0; i < items.length; i++) {
@@ -278,6 +336,9 @@ PluginWorkspacePage {
                     "type": String(item.type || "file"),
                     "downloadUrl": String(item.downloadUrl || ""),
                     "checked": false,
+                    "depth": 0,
+                    "hasChildren": false,
+                    "expanded": false,
                     "entry": item
                 })
             }
@@ -290,10 +351,15 @@ PluginWorkspacePage {
                         "size": "",
                         "type": "file",
                         "downloadUrl": singleUrl,
+                        "depth": 0,
+                        "hasChildren": false,
+                        "expanded": false,
                         "entry": result
                     })
                 }
             }
+            root.treeData = []
+            root.treeLoaded = false
             root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
             root.statusText = "共 " + rowsModel.count + " 项，总大小 " + root.totalSizeText + "；勾选文件后点击\"开始下载\""
         }
@@ -423,30 +489,62 @@ PluginWorkspacePage {
             id: breadcrumbRow
             width: parent.width
             spacing: root.sectionSpacing
-            visible: navModel.count > 0
+            visible: root.treeLoaded
 
             Text {
-                text: "位置："
+                text: "目录："
                 color: PluginTheme.mutedText
                 font.pixelSize: PluginTheme.smallFontSize
                 anchors.verticalCenter: parent.verticalCenter
             }
 
-            Repeater {
-                model: navModel
-                delegate: AppButton {
-                    text: String(model.name || "网盘根目录")
-                    outlineGhost: false
-                    anchors.verticalCenter: parent.verticalCenter
-                    onClicked: root.goToBreadcrumb(model.index)
+            Text {
+                width: parent.width - expandAllButton.width - collapseAllButton.width - refreshButton.width - parent.spacing * 4 - 40
+                elide: Text.ElideMiddle
+                text: root.treeRootUrl
+                color: PluginTheme.text
+                font.pixelSize: PluginTheme.smallFontSize
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            AppButton {
+                id: expandAllButton
+                text: "展开全部"
+                outlineGhost: false
+                anchors.verticalCenter: parent.verticalCenter
+                enabled: root.requestId.length === 0
+                onClicked: {
+                    root.expandedSet = ({})
+                    for (var i = 0; i < root.treeData.length; i++) {
+                        expandNodeRecursive(root.treeData[i], root.expandedSet)
+                    }
+                    root.renderTree()
                 }
             }
 
             AppButton {
+                id: collapseAllButton
+                text: "折叠全部"
+                outlineGhost: false
+                anchors.verticalCenter: parent.verticalCenter
+                enabled: root.requestId.length === 0
+                onClicked: {
+                    root.expandedSet = ({})
+                    root.renderTree()
+                }
+            }
+
+            AppButton {
+                id: refreshButton
                 text: "刷新"
                 anchors.verticalCenter: parent.verticalCenter
                 enabled: root.requestId.length === 0
-                onClicked: root.refreshCurrent()
+                onClicked: {
+                    if (root.treeRootUrl.length > 0)
+                        root.loadFolderTree(root.treeRootUrl)
+                    else
+                        root.parseLink()
+                }
             }
         }
 
@@ -507,6 +605,9 @@ PluginWorkspacePage {
                 required property string name
                 required property string size
                 required property string type
+                required property int depth
+                required property bool expanded
+                required property bool hasChildren
 
                 property real colCheck: table.width * 0.09
                 property real colName: table.width * 0.44
@@ -523,7 +624,11 @@ PluginWorkspacePage {
                 rightClickOnRelease: true
 
                 onRowPressed: function(row, data, modifiers) {
-                    table.standardSelectRow(row, modifiers)
+                    if (data && String(data.type || "") === "folder") {
+                        root.toggleRow(data)
+                    } else {
+                        table.standardSelectRow(row, modifiers)
+                    }
                 }
                 onRowContextRequested: function(row, data, sourceItem, x, y) {
                     table.standardSelectContextRow(row)
@@ -532,13 +637,14 @@ PluginWorkspacePage {
                     menu.openForActionsAtItem(root.contextActions(data), sourceItem, x, y)
                 }
 
-                CheckBox {
+                AppCheckBox {
                     id: checkBox
                     anchors.left: parent.left
                     anchors.leftMargin: PluginTheme.dp(4)
                     anchors.verticalCenter: parent.verticalCenter
                     width: PluginTheme.dp(24)
                     height: PluginTheme.dp(24)
+                    enabled: type !== "folder"
                     checked: rowsModel.get(index) ? rowsModel.get(index).checked : false
                     onToggled: function() {
                         if (index >= 0 && index < rowsModel.count) {
@@ -548,12 +654,12 @@ PluginWorkspacePage {
                 }
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: colCheck + PluginTheme.dp(8)
+                    anchors.leftMargin: colCheck + depth * PluginTheme.dp(16) + PluginTheme.dp(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: colName - PluginTheme.dp(8)
+                    width: colName - depth * PluginTheme.dp(16) - PluginTheme.dp(8)
                     elide: Text.ElideMiddle
-                    text: name
-                    color: PluginTheme.text
+                    text: (type === "folder" ? (expanded ? "▼ " : "▶ ") : "  ") + name
+                    color: type === "folder" ? PluginTheme.primary : PluginTheme.text
                     font.pixelSize: PluginTheme.smallFontSize
                 }
                 Text {
@@ -580,11 +686,11 @@ PluginWorkspacePage {
                     anchors.right: parent.right
                     anchors.rightMargin: PluginTheme.dp(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: type === "folder" ? "进入" : "下载"
+                    text: type === "folder" ? (expanded ? "折叠" : "展开") : "下载"
                     outlineGhost: false
                     onClicked: {
                         if (type === "folder") {
-                            root.openRow(rowsModel.get(index))
+                            root.toggleRow(rowsModel.get(index))
                         } else {
                             root.startDownload(rowsModel.get(index))
                         }
@@ -595,8 +701,6 @@ PluginWorkspacePage {
     }
 
     ListModel { id: rowsModel }
-
-    ListModel { id: navModel }
 
     AppTableSelectionController {
         id: selection
