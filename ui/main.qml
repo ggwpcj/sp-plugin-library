@@ -327,7 +327,6 @@ PluginWorkspacePage {
                 root.queueByTask[String(taskId)] = info
             }
             info.status = "queued"
-            queueStatusDirty()
         }
 
         function onDownloadProgress(task) {
@@ -365,29 +364,10 @@ PluginWorkspacePage {
                 info.status = "running"
                 root.queuedCount = Math.max(0, root.queuedCount - 1)
             }
-            queueStatusDirty()
         }
 
         function onDownloadControlFinished(requestId, response) {
-            queueStatusDirty()
         }
-    }
-
-    function queueStatusDirty() {
-        var running = 0
-        var done = 0
-        var fail = 0
-        for (var id in root.queueByTask) {
-            var info = root.queueByTask[id]
-            var s = String(info.status)
-            if (s === "running" || s === "resuming")
-                running++
-            else if (s === "completed")
-                done++
-            else if (s === "failed")
-                fail++
-        }
-        queueCountText.text = "队列：进行中 " + running + " · 完成 " + done + " · 失败 " + fail + "（失败自动续传）"
     }
 
     Column {
@@ -515,8 +495,7 @@ PluginWorkspacePage {
             height: Math.max(80, parent.height
                              - linkRow.implicitHeight - pathRow.implicitHeight
                              - breadcrumbRow.implicitHeight - headerRow.implicitHeight
-                             - queueCountText.implicitHeight
-                             - parent.spacing * 6)
+                             - parent.spacing * 5)
             model: rowsModel
             selectionController: selection
             standardSelectionEnabled: true
@@ -612,15 +591,6 @@ PluginWorkspacePage {
                     }
                 }
             }
-        }
-
-        Text {
-            id: queueCountText
-            width: parent.width
-            text: "队列：进行中 0 · 完成 0 · 失败 0（失败自动续传）"
-            color: PluginTheme.primary
-            font.pixelSize: PluginTheme.smallFontSize
-            wrapMode: Text.Wrap
         }
     }
 
