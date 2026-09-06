@@ -41,8 +41,18 @@ PluginWorkspacePage {
     }
 
     function loadSavedLinks() {
-        var saved = root.spPlugin.get("savedLinks", [])
+        var raw = root.spPlugin.get("savedLinks", "")
         root.savedLinks = []
+        var saved = []
+        if (typeof raw === "string" && raw.length > 0) {
+            try {
+                saved = JSON.parse(raw)
+            } catch (error) {
+                saved = []
+            }
+        } else if (Array.isArray(raw)) {
+            saved = raw
+        }
         if (Array.isArray(saved)) {
             for (var i = 0; i < saved.length; i++) {
                 var item = saved[i]
@@ -70,7 +80,43 @@ PluginWorkspacePage {
     }
 
     function persistLinks() {
-        root.spPlugin.set("savedLinks", root.savedLinks)
+        var json = ""
+        try {
+            json = JSON.stringify(root.savedLinks)
+        } catch (error) {
+            json = ""
+        }
+        root.spPlugin.set("savedLinks", json)
+    }
+
+    function linkPoolIndexOf(url) {
+        for (var i = 0; i < root.savedLinks.length; i++) {
+            if (root.savedLinks[i].url === url)
+                return i
+        }
+        return -1
+    }
+
+    function autoLinkName(url) {
+        var clean = String(url || "").trim()
+        if (clean.length === 0)
+            return "谷歌网盘链接"
+        var last = clean.replace(/\/+$/, "").split("/").pop() || ""
+        var short = String(last || clean)
+        if (short.length > 40)
+            short = short.substring(0, 40)
+        return short
+    }
+
+    function ensureLinkSaved() {
+        var link = linkField.text.trim()
+        if (link.length === 0)
+            return
+        if (root.linkPoolIndexOf(link) >= 0)
+            return
+        root.savedLinks.push({"url": link, "name": root.autoLinkName(link)})
+        root.persistLinks()
+        root.reloadLinkPool()
     }
 
     function saveCurrentLink() {
@@ -79,16 +125,21 @@ PluginWorkspacePage {
             root.spPlugin.showToast("请先粘贴分享链接再保存", "warning", "gdrive-save-empty")
             return
         }
-        for (var i = 0; i < root.savedLinks.length; i++) {
-            if (root.savedLinks[i].url === link) {
-                root.spPlugin.showToast("该链接已在连接池中", "info", "gdrive-save-exists")
-                return
-            }
+        var index = root.linkPoolIndexOf(link)
+        var name = root.renameText.text.trim()
+        if (name.length === 0)
+            name = root.autoLinkName(link)
+        if (index >= 0) {
+            root.savedLinks[index].name = name
+            root.persistLinks()
+            root.reloadLinkPool()
+            root.spPlugin.showToast("已更新该链接的名称", "success", "gdrive-save-renamed")
+            return
         }
-        root.savedLinks.push({"url": link, "name": link})
+        root.savedLinks.push({"url": link, "name": name})
         root.persistLinks()
         root.reloadLinkPool()
-        root.spPlugin.showToast("链接已保存到连接池", "success", "gdrive-save-ok")
+        root.spPlugin.showToast("链接已保存到链接池", "success", "gdrive-save-ok")
     }
 
     function deleteCurrentLink() {
@@ -98,7 +149,7 @@ PluginWorkspacePage {
         root.savedLinks.splice(index, 1)
         root.persistLinks()
         root.reloadLinkPool()
-        root.spPlugin.showToast("已从连接池删除", "success", "gdrive-save-deleted")
+        root.spPlugin.showToast("已从链接池删除", "success", "gdrive-save-deleted")
     }
 
     function useSelectedLink() {
@@ -463,6 +514,7 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
                 root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
                 var extra = result.truncated ? "；部分目录因内容过多已截断" : ""
                 root.statusText = "目录树共 " + Number(result.totalFiles || 0) + " 个文件，总大小 " + root.totalSizeText + extra + "；单击选中，双击文件夹展开，勾选文件后点\"开始下载\""
+                root.ensureLinkSaved()
                 return
             }
             var items = result.items || []
@@ -505,6 +557,7 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
             root.treeLoaded = false
             root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
             root.statusText = "共 " + rowsModel.count + " 项，总大小 " + root.totalSizeText + "；勾选文件后点击\"开始下载\""
+            root.ensureLinkSaved()
         }
 
         function onDirectorySelected(requestId, path, completed) {
@@ -609,6 +662,25 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         }
 
         Row {
+            id: renameRow
+            width: parent.width
+            spacing: root.sectionSpacing
+
+            AppTextField {
+                id: renameText
+                width: parent.width - saveButton.width - parent.spacing
+                placeholderText: "（可选）给这个链接起个名字，便于识别"
+            }
+
+            AppButton {
+                id: saveButton
+                text: "保存到链接池"
+                outlineGhost: false
+                onClicked: root.saveCurrentLink()
+            }
+        }
+
+        Row {
             id: pathRow
             width: parent.width
             spacing: root.sectionSpacing
@@ -634,7 +706,7 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
             spacing: root.sectionSpacing
 
             AppFormRow {
-                label: "连接池"
+                label: "链接池"
                 width: parent.width * 0.34
                 AppSelect {
                     id: linkPoolBox
@@ -644,13 +716,6 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
                         root.useSelectedLink()
                     }
                 }
-            }
-
-            AppButton {
-                text: "保存"
-                outlineGhost: false
-                anchors.verticalCenter: parent.verticalCenter
-                onClicked: root.saveCurrentLink()
             }
 
             AppButton {
