@@ -1,6 +1,6 @@
-- name: "SP-谷歌网盘下载"
+- name: SP-谷歌网盘下载
   version: "1"
-  package: "https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.0/SP-gdrive-downloader-v1.0.pkg"
-  sha256: "FA8AB1241B032095B48D781A5166D41350327E407313DE8646C25706A6CDDD1D"
-  author: "ggwpcj"
+  package: https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.0/sp-gdrive-downloader-v1.pkg
+  sha256: 643edbbb57d16dd46f4c04717e3759cb1bd7664aab5160de191088d7ea6758d1
+  author: ggwpcj
   introduction: "谷歌网盘(Google Drive)文件下载插件，支持目录浏览、多选、队列下载、断点续传。适用 Windows/Linux，最低 SP 版本见包内清单。"
