@@ -102,8 +102,14 @@ PluginWorkspacePage {
         if (!row)
             return
         if (row.type === "folder") {
-            var url = "https://drive.google.com/drive/folders/" + String(row.id || "")
-            navModel.append({"name": String(row.name || "文件夹"), "url": url})
+            var entry = row.entry || {}
+            var folderId = String(row.rowId || row.id || entry.id || "")
+            if (!folderId || folderId.indexOf("row-") === 0) {
+                root.spPlugin.showToast("无法识别文件夹，不能进入", "error", "gdrive-bad-folder")
+                return
+            }
+            var url = "https://drive.google.com/drive/folders/" + folderId
+            navModel.append({"name": String(row.name || entry.name || "文件夹"), "url": url})
             root.loadFolders(url)
         } else if (row.type === "file") {
             root.startDownload(row)
@@ -139,7 +145,7 @@ PluginWorkspacePage {
     function startDownload(entry) {
         if (!entry || !entry.downloadUrl)
             return
-        var key = "gdrive-" + String(entry.id || entry.name || "")
+        var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         var requestId = root.spPlugin.download({
             "url": String(entry.downloadUrl),
             "directory": root.saveDirectory,
