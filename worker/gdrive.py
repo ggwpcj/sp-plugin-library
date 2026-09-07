@@ -131,10 +131,23 @@ def build_download_info(
     return url, filename_from_disposition(content_disposition)
 
 
-_ENTRY_RE = re.compile(
-    r'<div class="flip-entry" id="entry-([^"]+)"[^>]*>'
-    r'.*?<a href="(https://drive\.google\.com/(?:file/d/|drive/folders/)[^"]+)"[^>]*>'
-    r'.*?<div class="flip-entry-title">([^<]*)</div>',
+_ENTRY_BOUNDARY = re.compile(
+    r'<div class="flip-entry" id="entry-([^"]+)"',
+    re.IGNORECASE,
+)
+
+_ENTRY_HREF_RE = re.compile(
+    r'<a[^>]+href="(https://drive\.google\.com/(?:file/d/|drive/folders/)[^"]+)"',
+    re.IGNORECASE,
+)
+
+_ENTRY_TITLE_RE = re.compile(
+    r'<div class="flip-entry-title"[^>]*>(.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+_SIZE_DIV_RE = re.compile(
+    r'<div class="flip-entry-size"[^>]*>(.*?)</div>',
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -142,36 +155,72 @@ _FOLDER_HREF_RE = re.compile(r"drive\.google\.com/drive/folders/([-\w]+)")
 _FILE_HREF_RE = re.compile(r"drive\.google\.com/file/d/([-\w]+)")
 _LINK_ID_RE = re.compile(r"[?&]id=([-\w]+)")
 
+_SIZE_UNITS = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 
-def parse_folder_page(body: str) -> List[Dict[str, str]]:
+
+def parse_size_text(text: str) -> int:
+    if not text:
+        return 0
+    match = re.search(r"([\d.]+)\s*([KkMmGgTt]?)[Bb]?", (text or "").replace(",", ""))
+    if not match:
+        return 0
+    try:
+        value = float(match.group(1))
+    except ValueError:
+        return 0
+    unit = match.group(2).upper() or ""
+    mult = _SIZE_UNITS.get(unit, 1)
+    return int(value * mult)
+
+
+def _entry_blocks(body: str) -> List[Tuple[str, str]]:
+    bounds = list(_ENTRY_BOUNDARY.finditer(body))
+    blocks: List[Tuple[str, str]] = []
+    for index, match in enumerate(bounds):
+        block_end = bounds[index + 1].start() if index + 1 < len(bounds) else len(body)
+        blocks.append((match.group(1), body[match.start():block_end]))
+    return blocks
+
+
+def parse_folder_page(body: str) -> List[Dict[str, object]]:
     folder_name = ""
     title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
     if title_match:
         folder_name = html.unescape(title_match.group(1)).strip()
 
-    items: List[Dict[str, str]] = []
-    for entry_match in _ENTRY_RE.finditer(body):
-        entry_id = entry_match.group(1)
-        href = entry_match.group(2)
-        name = html.unescape(entry_match.group(3)).strip()
+    items: List[Dict[str, object]] = []
+    for _entry_id, block in _entry_blocks(body):
+        href_match = _ENTRY_HREF_RE.search(block)
+        if not href_match:
+            continue
+        title_match = _ENTRY_TITLE_RE.search(block)
+        name = html.unescape(title_match.group(1)).strip() if title_match else ""
         if not name:
             continue
 
-        folder_match = _FOLDER_HREF_RE.search(href)
-        file_match = _FILE_HREF_RE.search(href)
+        size_text = ""
+        size_match = _SIZE_DIV_RE.search(block)
+        if size_match:
+            size_text = html.unescape(size_match.group(1)).strip()
+        size_bytes = parse_size_text(size_text)
+
+        folder_match = _FOLDER_HREF_RE.search(href_match.group(1))
+        file_match = _FILE_HREF_RE.search(href_match.group(1))
         if folder_match:
             items.append({
                 "name": name,
                 "id": folder_match.group(1),
                 "type": "folder",
-                "size": "",
+                "size": size_text,
+                "sizeBytes": size_bytes,
             })
         elif file_match:
             items.append({
                 "name": name,
                 "id": file_match.group(1),
                 "type": "file",
-                "size": "",
+                "size": size_text,
+                "sizeBytes": size_bytes,
             })
 
     return items

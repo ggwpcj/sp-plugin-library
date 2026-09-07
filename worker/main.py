@@ -6,12 +6,8 @@ from typing import Any
 
 from .gdrive import (
     build_download_info,
-    extract_confirm_token,
-    extract_download_action,
     file_id_from_url,
     folder_id_from_url,
-    format_size,
-    header_value,
     is_denied_page,
     parse_folder_page,
 )
@@ -88,48 +84,64 @@ def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     return {"url": direct_url, "fileName": file_name}
 
 
-def _probe_file(context: Any, file_id: str, route: str = "auto") -> tuple[str, str, str, int]:
-    response = _fetch(
-        context,
-        f"https://drive.google.com/uc?export=download&id={file_id}",
-        512 * 1024,
-        route,
-    )
+def direct_download_url(file_id: str) -> str:
+    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download"
 
+
+def _fetch_folder_page(
+    context: Any,
+    folder_id: str,
+    route: str,
+    start: int = 0,
+) -> tuple[list[dict[str, object]], str]:
+    url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
+    if start > 0:
+        url += f"&start={start}"
+    response = _fetch(context, url, 8 * 1024 * 1024, route)
     if not response.get("ok"):
-        final_url = response.get("url") or ""
-        if "drive.usercontent.google.com" in final_url:
-            return final_url, "", final_url, 0
-        raise RuntimeError(response.get("error") or "请求失败")
-
-    final_url = response.get("url") or ""
+        raise RuntimeError(f"获取文件夹内容失败: {response.get('error') or '未知错误'}")
     body = response.get("body") or ""
-    headers = response.get("headers") or {}
-    content_disposition = header_value(headers, "content-disposition")
+    if is_denied_page(body):
+        raise RuntimeError("该文件夹可能未公开分享，或链接已失效")
+    items = parse_folder_page(body)
+    title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
+    folder_name = html.unescape(title_match.group(1)).strip() if title_match else ""
+    return items, folder_name
 
-    size_display = ""
-    size_bytes = 0
-    if "drive.usercontent.google.com" in (final_url or ""):
-        content_length = header_value(headers, "content-length")
-        try:
-            size_bytes = int(content_length or 0)
-        except (TypeError, ValueError):
-            size_bytes = 0
-        size_display = format_size(size_bytes)
-        return final_url, size_display, final_url, size_bytes
 
-    if (body or "").lstrip().startswith("<"):
-        action = extract_download_action(body)
-        confirm = extract_confirm_token(body)
-        base = action if action.startswith("https://") else "https://drive.usercontent.google.com/download"
-        sep = "&" if "?" in base else "?"
-        direct_url = f"{base}{sep}id={file_id}&export=download"
-        if confirm:
-            direct_url += f"&confirm={confirm}"
-        return direct_url, "", direct_url, 0
-
-    return final_url or f"https://drive.google.com/uc?export=download&id={file_id}", \
-        size_display, final_url or f"https://drive.google.com/uc?export=download&id={file_id}", 0
+def _list_folder_items(
+    context: Any,
+    folder_id: str,
+    route: str,
+    page_size: int = 100,
+    max_pages: int = 50,
+) -> tuple[list[dict[str, object]], str]:
+    items: list[dict[str, object]] = []
+    seen: set[str] = set()
+    folder_name = ""
+    start = 0
+    for _page in range(max_pages):
+        context.check_cancelled()
+        page_items, page_name = _fetch_folder_page(context, folder_id, route, start)
+        if page_name and not folder_name:
+            folder_name = page_name
+        if not page_items:
+            break
+        new_items = 0
+        for item in page_items:
+            item_id = str(item.get("id") or "")
+            if item_id and item_id in seen:
+                continue
+            if item_id:
+                seen.add(item_id)
+            items.append(item)
+            new_items += 1
+        if new_items == 0:
+            break
+        start += len(page_items)
+        if len(page_items) < page_size:
+            break
+    return items, folder_name
 
 
 def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -143,28 +155,10 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
 
     context.progress(0.05, "正在获取文件夹内容")
 
-    response = _fetch(
-        context,
-        f"https://drive.google.com/embeddedfolderview?id={folder_id}",
-        8 * 1024 * 1024,
-        route,
-    )
+    items, folder_name = _list_folder_items(context, folder_id, route)
 
-    if not response.get("ok"):
-        raise RuntimeError(f"获取文件夹内容失败: {response.get('error') or '未知错误'}")
-
-    body = response.get("body") or ""
-    if is_denied_page(body):
-        raise RuntimeError("该文件夹可能未公开分享，或链接已失效")
-
-    items = parse_folder_page(body)
     if not items:
         raise RuntimeError("文件夹为空，或无法解析内容")
-
-    folder_name = ""
-    title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
-    if title_match:
-        folder_name = html.unescape(title_match.group(1)).strip()
 
     total = len(items)
     total_bytes = 0
@@ -172,20 +166,13 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
         context.check_cancelled()
         item["path"] = f"/{folder_name}" if folder_name else "/"
         if item.get("type") == "file":
-            item["downloadUrl"] = ""
-            try:
-                download_url, size_display, resolved_url, size_bytes = _probe_file(context, item["id"], route)
-                item["downloadUrl"] = download_url
-                item["size"] = size_display
-                item["sizeBytes"] = size_bytes
-                total_bytes += size_bytes
-            except Exception as error:
-                item["size"] = ""
-                item["sizeBytes"] = 0
-                context.log(f"获取文件信息失败对 {item.get('name')}: {error}")
+            file_id = str(item.get("id") or "")
+            item["downloadUrl"] = direct_download_url(file_id)
+            size_bytes = int(item.get("sizeBytes") or 0)
+            total_bytes += size_bytes
         context.progress(
             0.1 + 0.85 * (index + 1) / total,
-            f"正在获取文件信息 {index + 1}/{total}",
+            f"正在读取文件信息 {index + 1}/{total}",
         )
 
     context.progress(1.0, "解析完成")
@@ -212,24 +199,7 @@ def _collect_tree(
     if budget.remaining <= 0:
         return []
 
-    response = _fetch(
-        context,
-        f"https://drive.google.com/embeddedfolderview?id={folder_id}",
-        8 * 1024 * 1024,
-        route,
-    )
-    if not response.get("ok"):
-        raise RuntimeError(f"获取文件夹内容失败: {response.get('error') or '未知错误'}")
-
-    body = response.get("body") or ""
-    if is_denied_page(body):
-        raise RuntimeError("该文件夹可能未公开分享，或链接已失效")
-
-    items = parse_folder_page(body)
-    folder_name = ""
-    title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
-    if title_match:
-        folder_name = html.unescape(title_match.group(1)).strip()
+    items, folder_name = _list_folder_items(context, folder_id, route)
     current_path = f"{path}/{folder_name}" if folder_name else path
 
     nodes: list[dict[str, Any]] = []
@@ -242,22 +212,12 @@ def _collect_tree(
         item["path"] = current_path
         if item.get("type") == "folder":
             item["downloadUrl"] = ""
-            item["size"] = ""
-            item["sizeBytes"] = 0
-            item["children"] = _collect_tree(context, item["id"], route, depth + 1, budget, current_path)
+            item["children"] = _collect_tree(context, str(item["id"]), route, depth + 1, budget, current_path)
             nodes.append(item)
         else:
             item["children"] = []
-            item["downloadUrl"] = ""
-            try:
-                download_url, size_display, _resolved, size_bytes = _probe_file(context, item["id"], route)
-                item["downloadUrl"] = download_url
-                item["size"] = size_display
-                item["sizeBytes"] = size_bytes
-            except Exception as error:
-                item["size"] = ""
-                item["sizeBytes"] = 0
-                context.log(f"获取文件信息失败对 {item.get('name')}: {error}")
+            file_id = str(item.get("id") or "")
+            item["downloadUrl"] = direct_download_url(file_id)
             nodes.append(item)
     return nodes
 
