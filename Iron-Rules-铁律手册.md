@@ -72,6 +72,22 @@
 - **现象**：线上清单已更新，PR #3 分支还指向旧 sha256 → 总目录若合并不含新哈希。
 - **正确**：部署步骤 9：同步 fork 分支 → PR mergeable=clean。
 
+### F-09 fork 的 git origin 拼错导致 push 403/推错仓库（第 3 轮发布）
+- **现象**：本地 `pluginfork` 的 `origin` 是 `spworker2026/plugins`（上游），push 报 `Permission to spworker2026 denied to ggwpcj`；正确 fork 是 `ggwpcj/plugins`。
+- **根因**：clone 时把 fork 仓库 URL 填成上游，或 previous session 用了错误 remote。
+- **正确**：
+  ```powershell
+  git remote set-url origin "https://github.com/ggwpcj/plugins.git"
+  # 推送时临时带 token，推完还原
+  git push origin update-gdrive-v1.4
+  # push 卡住超时不代表失败：git 输出写到 stderr，用 git log 远端分支 SHA 比对确认
+  ```
+  验证：`git ls-remote origin update-gdrive-v1.4` 或 GitHub API branches SHA == 本地 `git log -1`。
+
+### F-10 push 输出全到 stderr，PowerShell 误判为错误
+- **现象**：`git push` 成功但 `$LASTEXITCODE` 却被 `2>&1` 合并导致红字；必须读 `EXIT=0`。
+- **正确**：push 后看 `$LASTEXITCODE`（0=成功）与输出里的 `head..head` 行；再用 API / `git ls-remote` 二次确认远端 SHA 已变。
+
 ---
 
 ## 二、发布前 3 分钟自检清单

@@ -147,7 +147,12 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. 单文件/单文件夹失败降级（只影响自身，不拖垮整体）。
 - 修改（ui/main.qml）：`list_folder` 与 `list_folder_tree` 超时均设为 300000ms（SP 上限）；`resolve_download` 保持 120000ms。
 - 验收：小文件夹 1 请求；500 文件大文件夹并行分页取全；多级树 52+ 节点无截断；循环目录 A↔B 各解析 1 次；失败降级兄弟完整；`max_active==8`。
-- 状态：**已完成，待发布（第 4 次发布）**。▸ 发布要点待补录"最终哈希/asset id/lists.yaml 对齐/PR 同步"。
+- 状态：**已完成并发布（2026-09 第 4 次发布）**。
+  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`c7c01c8fad7540705711f3e810b5350af59149a03181718c3971cd513021a429`**（21598B），source_files=10（含 3 本手册）。
+  - Release 384015546 沿用；**删旧 asset 549685100，新 asset ID `551686576`**。
+  - 远程 HASH_MATCH 通过；lists.yaml 已写 sha256（小写）并推送 `8c3d285`。
+  - PR #3 分支同步完成，head=`a919000`，待上游 spworker2026 合并。
+  - 补录：打包时 CHECKSUMS 已更新（main.py BE26ADBC…、ui/main.qml B3184D3A…）。
 
 ---
 

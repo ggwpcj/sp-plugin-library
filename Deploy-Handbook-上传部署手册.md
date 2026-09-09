@@ -9,14 +9,16 @@
 ## 〇、本次发布前快照（模板表格，每轮复制一份填写）
 
 ```
-发布轮次  : v1.4 第 3 轮（并行解析）→ 第 4 次上传
+发布轮次  : v1.4 第 3 轮（并行解析）→ 第 4 次上传 ✅ 2026-09 已完成
 版本      : v1.4（不许升版本）
 包名      : sp-gdrive-downloader-v1.4.pkg
-期望sha256: <打完包装后填>
-打包输出  : E:\yuanma\gugechajian-0905\release-v1.4-rX-rY（全新目录）
-Release ID: 384015546（沿用）
-旧asset ID: 549685100（本轮删除）
-新asset ID: <上传后记录>
+sha256    : c7c01c8fad7540705711f3e810b5350af59149a03181718c3971cd513021a429 ✅
+打包输出  : E:\yuanma\gugechajian-0905\release-v1.4-r4（全新目录）
+Release ID: 384015546
+旧asset ID: 549685100（已删）
+新asset ID: 551686576 ✅
+SAULT : source_files=10（含 3 手册）
+推送    : 源码 8c3d285；PR #3 分支 a919000（open，待上游合并）
 ```
 
 ---
@@ -170,4 +172,4 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 - v1.2：连接池、检索深度、目录存储、表格交互、线路——官方 PR #1（open）
 - v1.4 第 1 轮：解析提速（分页+直链）——首包 df03c52d（已被替代）
 - v1.4 第 2 轮：移除链接池——上线 0b5c26，asset 549685100，PR #3 head c229e1e（open）
-- v1.4 第 3 轮：并行解析——**本轮待发布**（逐步 9 后补录结果）
+- v1.4 第 3 轮：并行解析——**已发布**（sha256 `c7c01c8`，asset 551686576，PR #3 head a919000 open，待上游合并）
