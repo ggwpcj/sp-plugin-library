@@ -183,8 +183,12 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. `parse_size_from_content_range`：解析 `bytes 0-0/N` → N；`format_size` 已有格式化。
   5. 单层 `list_folder` 全探；`_collect_tree` 每子文件夹 limit=50。
 - 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
-- 状态：**已完成（2026-09 第 6 次发布）**，待部署。
-  - new worker/main.py SHA=`45033911…`、worker/gdrive.py SHA=`2D1D39AD…`（CHECKSUMS 已更新）。
+- 状态：**已完成并发布（2026-09 第 6 次发布）**。
+  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`5a4bf0412b9897faa11d281237709653c4feb4a9984371ebed414dd792c78a8b`**（25358B，source_files=10）。
+  - Release 384015546 沿用；**删旧 asset 552339492，新 asset ID `552802526`**。
+  - 远程 HASH_MATCH 通过；lists.yaml 写 5a4bf041（小写）推送 `b5a192e`；raw 已确认。
+  - PR #3 分支同步 head=`7332ba8`，待上游合并；worker/main.py CHECKSUMS→45033911…、worker/gdrive.py→2D1D39AD…。
+  - ⚠️ 大小探测依赖 Range 请求（宿主代理），实际耗时与成功率需 SP 实测。
 
 ---
 

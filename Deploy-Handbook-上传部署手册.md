@@ -35,16 +35,16 @@ SAULT : source_files=10（含 3 手册）
 ```
 
 ```
-发布轮次  : v1.4 第 5 轮（文件大小显示：Range Content-Range 探测）→ 第 6 次上传 ⏳ 待部署
+发布轮次  : v1.4 第 5 轮（文件大小显示：Range Content-Range 探测）→ 第 6 次上传 ✅ 2026-09 已完成
 版本      : v1.4（不许升版本）
 包名      : sp-gdrive-downloader-v1.4.pkg
-sha256    : <步骤 8 填>
+sha256    : 5a4bf0412b9897faa11d281237709653c4feb4a9984371ebed414dd792c78a8b ✅
 打包输出  : E:\yuanma\gugechajian-0905\release-v1.4-r6（全新目录）
 Release ID: 384015546
-旧asset ID: 552339492（待删）
-新asset ID: <待上传>
+旧asset ID: 552339492（已删）
+新asset ID: 552802526 ✅
 SAULT : source_files=10（含 3 手册）
-推送    : 源码 <待提交>
+推送    : 源码 add01d1→b5a192e；PR #3 分支 7332ba8（open，待上游合并）
 ```
 
 ---
