@@ -154,6 +154,25 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - PR #3 分支同步完成，head=`a919000`，待上游 spworker2026 合并。
   - 补录：打包时 CHECKSUMS 已更新（main.py BE26ADBC…、ui/main.qml B3184D3A…）。
 
+### v1.4（第 4 轮）—— 表格交互修复（用户报"勾选框勾不了/单击折叠展开死/双击进不了子目录"）
+- 症状：解析内容出来后，**鼠标双击进不了子级目录**（只能右键菜单）；**单击折叠/展开是死的**；**左侧勾选框点击没反应**（勾选不了项目）。
+- 根因（对照官方可用范本 `sp-执行脚本` 查证后确认）：
+  1. 勾选框被判死：`AppCheckBox` 直接塞进 `AppTableCell` 内部，但 cell `rowInteractionEnabled: true` 会把点击吞掉 → 必须通过官方 `embeddedControl`（`embeddedControlRole`+`embeddedControlRowInteractionEnabled: true`+`indicatorOnly: true`）内嵌。
+  2. 双击/折叠失效：`AppTableCell` 双击走 `onEditRequested`（需配 `editorComponent` 才触发），仅靠 `onRowPressed` 时间戳猜双击不可靠；且整行交互与内嵌控件抢事件。
+- 修改（ui/main.qml）：
+  1. 勾选框 → `embeddedControl: Component { AppCheckBox { ... indicatorOnly: true ... } }` + `embeddedControlRole: "check"` + `embeddedControlRowInteractionEnabled: true`，onClicked 回写 `rowsModel.setProperty(cellRow,"checked",checked)`。
+  2. 行交互 → 封装 `component GDriveCell: AppTableCell`，统一 `onRowPressed`/`onEditRequested`/`onRowContextRequested`。delegate 拆 4 列 GDriveCell（勾选/文件名/大小/类型）。
+  3. `handleRowPressed`：单击文件夹 → 320ms 延迟 `toggleRow`（**单击折叠/展开**），400ms 内二次按下判双击立即 `toggleRow`；单击文件 → `standardSelectRow`。
+  4. `handleRowDoubleClick`（onEditRequested 双击通道）与 onRowPressed 双击分支用 `doubleConsumed` 守卫防双重触发（600ms 复位）。
+  5. `editorComponent` 提供最小 AppTextField 以启用 cell 双击机制（`editing: false` 不进入真编辑）。
+- 验收：py_compile×2 + qmlcheck2 全过；`git status` 干净。
+- 状态：**已完成并发布（2026-09 第 5 次发布）**。
+  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`e8bfaf0b6348f5220e3da252dd1c2ca865bdca3ce869e4cbe1817e729e1899ed`**（22622B，source_files=10）。
+  - Release 384015546 沿用；**删旧 asset 551686576，新 asset ID `552339492`**。
+  - 远程 HASH_MATCH 通过；lists.yaml 写 e8bfaf0b（小写）推送 `6f0ecdf`；raw 已确认。
+  - PR #3 分支同步 head=`fcc9197`，待上游合并；`ui/main.qml` CHECKSUMS→A96492EC…。
+  - ⚠️ 运行时行为（双击/单击/勾选实际手感）依赖 SP 宿主，需用户实测确认后再定论。
+
 ---
 
 ## 七、验收后交付

@@ -88,6 +88,15 @@
 - **现象**：`git push` 成功但 `$LASTEXITCODE` 却被 `2>&1` 合并导致红字；必须读 `EXIT=0`。
 - **正确**：push 后看 `$LASTEXITCODE`（0=成功）与输出里的 `head..head` 行；再用 API / `git ls-remote` 二次确认远端 SHA 已变。
 
+### F-11 AppTableCell 内嵌勾选框/双击必须用官方机制（第 4 轮用户二次报障）
+- **现象**：解析内容出来后**勾选框点了没反应**、**单击折叠/展开死**、**双击进不了子级目录**，只能在右键菜单操作。
+- **根因**：
+  1. `AppCheckBox` 直接作为 `AppTableCell` 的子项，而 cell `rowInteractionEnabled: true` 会把鼠标事件吞掉 → 勾选框永远点不到。**必须**通过 `embeddedControl:`（Component 内 `AppCheckBox { indicatorOnly: true }`）+ `embeddedControlRole` + `embeddedControlRowInteractionEnabled: true` 内嵌。
+  2. `AppTableCell` 的双击走 `onEditRequested` 信号，且**需要配置 `editorComponent` 才启用**；只靠 `onRowPressed` 时间戳猜双击不可靠。双击业务应在 `onEditRequested` 里处理；想阻止编辑器出现就保持 `editing: false`。
+  3. 整行交互与内嵌控件抢事件：行事件统一封装进 `component XxxCell: AppTableCell`，每列一个 cell，`onRowPressed/onEditRequested/onRowContextRequested` 统一转发到页面函数。
+- **正确**：照官方唯一可用范本 `sp-执行脚本\ui\main.qml`（embeddedControl 勾选/下拉 + editorComponent 双击 + AutomaticCell 封装）改；不要自己发明"直接把控件塞进 cell"的写法。
+- 附：单击文件夹行想折叠/展开，用延迟 Timer（~320ms）区分单击与双击；双击通道与 onRowPressed 时间戳双通道共存时用 `doubleConsumed` 标志+600ms 复位防重复 toggle。
+
 ---
 
 ## 二、发布前 3 分钟自检清单
