@@ -101,7 +101,7 @@ PluginWorkspacePage {
         linkField.text = url
         if (root.depthMode === "current") {
             root.statusText = "正在获取当前目录内容..."
-            root.requestId = root.spPlugin.call("list_folder", {"url": url, "route": root.route}, 120000)
+            root.requestId = root.spPlugin.call("list_folder", {"url": url, "route": root.route}, 300000)
         } else {
             root.statusText = "正在获取完整目录树..."
             root.requestId = root.spPlugin.call("list_folder_tree", {"url": url, "route": root.route}, 300000)

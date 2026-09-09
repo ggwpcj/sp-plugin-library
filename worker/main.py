@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import concurrent.futures
 import html
 import re
+import threading
 from typing import Any
 
 from .gdrive import (
@@ -14,6 +16,12 @@ from .gdrive import (
 
 _MAX_TREE_DEPTH = 100
 _MAX_TREE_ITEMS = 5000
+_MAX_WORKERS = 8
+_PAGE_SIZE = 100
+
+# 全局信号量：无论多少工作线程，真正并发在途的 HTTP 请求不超过 _MAX_WORKERS。
+# 避免树/分页并行时 8x8=64 个请求同时打给 Google 与宿主，也避免宿主侧意见。
+_REQUEST_SEMAPHORE = threading.BoundedSemaphore(_MAX_WORKERS)
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -23,7 +31,8 @@ _USER_AGENT = (
 
 
 def _fetch(context: Any, url: str, max_bytes: int, route: str = "auto") -> dict[str, Any]:
-    return context.request({
+    with _REQUEST_SEMAPHORE:
+        return context.request({
         "url": url,
         "method": "GET",
         "route": route,
@@ -113,34 +122,77 @@ def _list_folder_items(
     context: Any,
     folder_id: str,
     route: str,
-    page_size: int = 100,
+    page_size: int = _PAGE_SIZE,
     max_pages: int = 50,
 ) -> tuple[list[dict[str, object]], str]:
+    """并行分页拉取一个文件夹的全部条目（自适应探测）。
+
+    先在单个请求拿到首页；若首页条目 < page_size（绝大多数文件夹），
+    说明内容很少，立即返回，不浪费请求。只有首页满 100 才并行扩展后续页，
+    直到出现空页或条目数不足 page_size。失败页跳过并记日志，不中断整体。
+    """
     items: list[dict[str, object]] = []
     seen: set[str] = set()
     folder_name = ""
-    start = 0
-    for _page in range(max_pages):
-        context.check_cancelled()
-        page_items, page_name = _fetch_folder_page(context, folder_id, route, start)
-        if page_name and not folder_name:
-            folder_name = page_name
-        if not page_items:
-            break
-        new_items = 0
-        for item in page_items:
-            item_id = str(item.get("id") or "")
-            if item_id and item_id in seen:
-                continue
-            if item_id:
-                seen.add(item_id)
+    fetched_pages: list[tuple[int, list[dict[str, object]], str]] = []
+
+    first_items, first_name = _fetch_folder_page(context, folder_id, route, 0)
+    if first_name:
+        folder_name = first_name
+    fetched_pages.append((0, first_items, first_name))
+    for item in first_items:
+        item_id = str(item.get("id") or "")
+        if item_id and item_id not in seen:
+            seen.add(item_id)
             items.append(item)
-            new_items += 1
-        if new_items == 0:
+
+    if len(first_items) < page_size:
+        return items, folder_name
+
+    start_idx = 1
+    while start_idx < max_pages:
+        context.check_cancelled()
+        batch = range(start_idx, min(start_idx + _MAX_WORKERS, max_pages))
+        offsets = [p * page_size for p in batch]
+        start_idx = batch.stop
+
+        def _fetch_one(offset: int) -> tuple[int, list[dict[str, object]], str]:
+            try:
+                page_items, page_name = _fetch_folder_page(context, folder_id, route, offset)
+                return offset, page_items, page_name
+            except Exception as error:
+                context.log(f"拉取分页失败({offset}): {error}")
+                return offset, [], ""
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+            results = list(executor.map(_fetch_one, offsets))
+
+        results.sort(key=lambda r: r[0])
+        batch_has_new = False
+        for offset, page_items, page_name in results:
+            if page_name and not folder_name:
+                folder_name = page_name
+            if not page_items:
+                continue
+            for item in page_items:
+                item_id = str(item.get("id") or "")
+                if item_id and item_id in seen:
+                    continue
+                if item_id:
+                    seen.add(item_id)
+                items.append(item)
+                batch_has_new = True
+            fetched_pages.append((offset, page_items, page_name))
+
+        smallest_page_count = min((len(p) for _, p, _ in results), default=0)
+        if not batch_has_new or smallest_page_count < page_size:
             break
-        start += len(page_items)
-        if len(page_items) < page_size:
-            break
+
+    if not folder_name:
+        for offset, page_items, page_name in fetched_pages:
+            if page_name:
+                folder_name = page_name
+                break
     return items, folder_name
 
 
@@ -189,37 +241,86 @@ def _collect_tree(
     context: Any,
     folder_id: str,
     route: str,
-    depth: int,
     budget: _Budget,
     path: str = "/",
 ) -> list[dict[str, Any]]:
-    if depth > _MAX_TREE_DEPTH:
-        context.log(f"目录层级超过上限 {_MAX_TREE_DEPTH}，已截断")
-        return []
-    if budget.remaining <= 0:
-        return []
+    """广度优先并行解析完整目录树。
 
-    items, folder_name = _list_folder_items(context, folder_id, route)
-    current_path = f"{path}/{folder_name}" if folder_name else path
+    迭代式 BFS + 单一共享线程池：每一批并行解析文件夹，把子文件夹加入
+    队列继续，直到全部完成。避免递归嵌套线程池造成的死锁与线程爆炸，
+    同时保持并发抓取的高吞吐。单个子文件夹失败只影响自身，不影响兄弟。
+    """
+    root_node: dict[str, Any] = {
+        "name": "",
+        "id": folder_id,
+        "type": "folder",
+        "size": "",
+        "sizeBytes": 0,
+        "path": path,
+        "children": [],
+        "downloadUrl": "",
+        "depth": 0,
+    }
+    node_by_id: dict[str, dict[str, Any]] = {folder_id: root_node}
+    pending: list[dict[str, Any]] = [root_node]
 
-    nodes: list[dict[str, Any]] = []
-    for item in items:
-        context.check_cancelled()
-        if budget.remaining <= 0:
-            context.log("目录内容过多，已达到上限，剩余目录已截断")
-            break
-        budget.remaining -= 1
-        item["path"] = current_path
-        if item.get("type") == "folder":
-            item["downloadUrl"] = ""
-            item["children"] = _collect_tree(context, str(item["id"]), route, depth + 1, budget, current_path)
-            nodes.append(item)
-        else:
-            item["children"] = []
-            file_id = str(item.get("id") or "")
-            item["downloadUrl"] = direct_download_url(file_id)
-            nodes.append(item)
-    return nodes
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+        while pending:
+            context.check_cancelled()
+            if budget.remaining <= 0:
+                context.log("目录内容过多，已达到上限，剩余目录已截断")
+                break
+
+            batch = pending
+            pending = []
+
+            def _load(node: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, object]]]:
+                nid = str(node.get("id") or "")
+                try:
+                    items, folder_name = _list_folder_items(context, nid, route)
+                    if folder_name:
+                        node["name"] = folder_name
+                    return node, items
+                except Exception as error:
+                    context.log(f"解析文件夹失败 {node.get('name') or nid}: {error}")
+                    return node, []
+
+            futures = {executor.submit(_load, node): node for node in batch}
+            for future, node in futures.items():
+                nid = str(node.get("id") or "")
+                node["children"] = []
+                loaded_node, items = future.result()
+                current_path = node.get("path") or path
+                if loaded_node.get("name"):
+                    current_path = f"{current_path}/{loaded_node['name']}"
+                if budget.remaining <= 0:
+                    continue
+                for item in items:
+                    context.check_cancelled()
+                    if budget.remaining <= 0:
+                        context.log("目录内容过多，已达到上限，剩余目录已截断")
+                        break
+                    budget.remaining -= 1
+                    item["path"] = current_path
+                    if item.get("type") == "folder":
+                        child_id = str(item.get("id") or "")
+                        item["downloadUrl"] = ""
+                        item["children"] = []
+                        item["depth"] = int(node.get("depth") or 0) + 1
+                        if child_id in node_by_id:
+                            item["_reused"] = True
+                        else:
+                            node_by_id[child_id] = item
+                            pending.append(item)
+                        node["children"].append(item)
+                    else:
+                        item["children"] = []
+                        item["depth"] = int(node.get("depth") or 0) + 1
+                        file_id = str(item.get("id") or "")
+                        item["downloadUrl"] = direct_download_url(file_id)
+                        node["children"].append(item)
+
+    return root_node.get("children") or []
 
 
 def list_folder_tree(context: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -234,7 +335,7 @@ def list_folder_tree(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     context.progress(0.05, "正在获取完整目录树")
 
     budget = _Budget(_MAX_TREE_ITEMS)
-    tree = _collect_tree(context, folder_id, route, 0, budget)
+    tree = _collect_tree(context, folder_id, route, budget)
     total_files = 0
     total_bytes = 0
 

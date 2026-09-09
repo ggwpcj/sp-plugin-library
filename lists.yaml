@@ -1,6 +1,6 @@
 - name: SP-谷歌网盘下载
   version: '1.4'
   package: https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.4/sp-gdrive-downloader-v1.4.pkg
-  sha256: 0b5c2623fc81c698bfeda361fdae061b23cdc6ecd2c864cf52f175ed65327a53
+  sha256: c7c01c8fad7540705711f3e810b5350af59149a03181718c3971cd513021a429
   author: ggwpcj
-  introduction: 谷歌网盘(Google Drive)文件下载插件：解析性能大幅优化，文件夹不再逐个探测文件，改为分页拉取+直链构造，上千文件秒级解析；检索深度(全部解析/当前深度)，目录存储(原始层级/仅使用父级/当前目录)，表格模拟网页版整行单击选中、双击文件夹展开，线路默认二级代理并支持宿主核心内直连。适用 Windows/Linux。
+  introduction: 谷歌网盘(Google Drive)文件下载插件：解析性能大幅优化，文件夹分页拉取+直链构造，多层级大目录并行解析(并发限流)，单文件夹失败自动降级不中断，上千文件秒级解析；检索深度(全部解析/当前深度)，目录存储(原始层级/仅使用父级/当前目录)，表格模拟网页版整行单击选中、双击文件夹展开，线路默认二级代理并支持宿主核心内直连。适用 Windows/Linux。
