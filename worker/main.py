@@ -4,20 +4,24 @@ import concurrent.futures
 import html
 import re
 import threading
-from typing import Any
+from typing import Any, Dict, Optional
 
 from .gdrive import (
     build_download_info,
     file_id_from_url,
     folder_id_from_url,
+    format_size,
+    header_value,
     is_denied_page,
     parse_folder_page,
+    parse_size_from_content_range,
 )
 
 _MAX_TREE_DEPTH = 100
 _MAX_TREE_ITEMS = 5000
 _MAX_WORKERS = 8
 _PAGE_SIZE = 100
+_PROBE_TREE_LIMIT = 50
 
 # 全局信号量：无论多少工作线程，真正并发在途的 HTTP 请求不超过 _MAX_WORKERS。
 # 避免树/分页并行时 8x8=64 个请求同时打给 Google 与宿主，也避免宿主侧意见。
@@ -30,18 +34,27 @@ _USER_AGENT = (
 )
 
 
-def _fetch(context: Any, url: str, max_bytes: int, route: str = "auto") -> dict[str, Any]:
+def _fetch(
+    context: Any,
+    url: str,
+    max_bytes: int,
+    route: str = "auto",
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> dict[str, Any]:
     with _REQUEST_SEMAPHORE:
+        headers: Dict[str, str] = {
+            "User-Agent": _USER_AGENT,
+            "Accept-Encoding": "identity",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
         return context.request({
         "url": url,
         "method": "GET",
         "route": route,
         "timeoutMs": 20000,
         "maxBytes": max_bytes,
-        "headers": {
-            "User-Agent": _USER_AGENT,
-            "Accept-Encoding": "identity",
-        },
+        "headers": headers,
     })
 
 
@@ -97,6 +110,32 @@ def direct_download_url(file_id: str) -> str:
     return f"https://drive.usercontent.google.com/download?id={file_id}&export=download"
 
 
+def _probe_file_size(context: Any, file_id: str, route: str) -> int:
+    """对公开文件发 Range 请求(1字节)取总大小，失败返回 0。
+
+    谷歌网盘下载直链对文件支持 Range(206)，Content-Range 头带总大小；
+    对需要病毒确认的大文件同样返回 206，故可正确拿到真实大小。
+    """
+    if not file_id:
+        return 0
+    try:
+        response = _fetch(
+            context,
+            direct_download_url(file_id),
+            4096,
+            route,
+            extra_headers={"Range": "bytes=0-0"},
+        )
+    except Exception:
+        return 0
+    if not response.get("ok"):
+        return 0
+    headers = response.get("headers") or {}
+    return parse_size_from_content_range(
+        header_value(headers, "content-range"),
+    )
+
+
 def _fetch_folder_page(
     context: Any,
     folder_id: str,
@@ -124,6 +163,7 @@ def _list_folder_items(
     route: str,
     page_size: int = _PAGE_SIZE,
     max_pages: int = 50,
+    probe_limit: Optional[int] = None,
 ) -> tuple[list[dict[str, object]], str]:
     """并行分页拉取一个文件夹的全部条目（自适应探测）。
 
@@ -147,6 +187,7 @@ def _list_folder_items(
             items.append(item)
 
     if len(first_items) < page_size:
+        _probe_item_sizes(context, items, route, limit=probe_limit)
         return items, folder_name
 
     start_idx = 1
@@ -193,7 +234,38 @@ def _list_folder_items(
             if page_name:
                 folder_name = page_name
                 break
+
+    _probe_item_sizes(context, items, route, limit=probe_limit)
     return items, folder_name
+
+
+def _probe_item_sizes(
+    context: Any,
+    items: list[dict[str, object]],
+    route: str,
+    limit: Optional[int] = None,
+) -> None:
+    """对列表中的文件并行探测真实大小（Range 请求 1 字节）。
+
+    失败自动降级：保持原 size；不中断整体解析。
+    limit 用于限制单批探测数量（主要是树模式深层大目录），超限部分留空。
+    """
+    files = [item for item in items if item.get("type") == "file"]
+    if not files:
+        return
+    if limit is not None and limit <= 0:
+        return
+    batch = files if limit is None else files[:limit]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+
+        def _one(item: dict[str, object]) -> int:
+            return _probe_file_size(context, str(item.get("id") or ""), route)
+
+        results = list(executor.map(_one, batch))
+    for item, size_bytes in zip(batch, results):
+        if size_bytes > 0:
+            item["sizeBytes"] = size_bytes
+            item["size"] = format_size(size_bytes)
 
 
 def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -277,7 +349,10 @@ def _collect_tree(
             def _load(node: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, object]]]:
                 nid = str(node.get("id") or "")
                 try:
-                    items, folder_name = _list_folder_items(context, nid, route)
+                    items, folder_name = _list_folder_items(
+                        context, nid, route,
+                        probe_limit=_PROBE_TREE_LIMIT,
+                    )
                     if folder_name:
                         node["name"] = folder_name
                     return node, items

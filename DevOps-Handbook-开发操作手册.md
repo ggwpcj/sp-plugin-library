@@ -173,6 +173,19 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - PR #3 分支同步 head=`fcc9197`，待上游合并；`ui/main.qml` CHECKSUMS→A96492EC…。
   - ⚠️ 运行时行为（双击/单击/勾选实际手感）依赖 SP 宿主，需用户实测确认后再定论。
 
+### v1.4（第 5 轮）—— 网盘资料不显示文件大小（用户报障）
+- 症状：解析出来的清单有文件名/类型，但"大小"列始终为空。
+- 根因（抓真实公开文件夹 `gdown` 样本实证）：Google Drive **嵌入式视图 HTML（`embeddedfolderview?id=`）根本不返回文件大小**——每个条目只有 `flip-entry-title`（名称）+ `flip-entry-last-modified`（修改日期），全页无 `flip-entry-size`/任何 size 字段。这是数据源缺失，不是代码 Bug；从 v1.0 起大小列就一直是空的（此前无用户报障）。
+- 修复方案（worker/main.py + worker/gdrive.py）：
+  1. 新逻辑 `_probe_file_size`：对每个 file 的下载直链发 `GET` + 头 `Range: bytes=0-0`（只取 1 字节），从响应 `Content-Range: bytes 0-0/<total>` 解析真实总大小。小包+大文件都能拿（206 Not Modified 不受病毒确认页影响）。
+  2. 宿主 `request()` **不支持 HEAD method**，只能 GET + Range（文档明确 method 仅 GET/POST/PUT/PATCH/DELETE）。
+  3. `_probe_item_sizes` 并行探测（`ThreadPoolExecutor(max_workers=8)`），失败静默降级不中断；`limit`（默认 None 全探，树模式 `_PROBE_TREE_LIMIT=50`）防超大树目录拖垮解析。
+  4. `parse_size_from_content_range`：解析 `bytes 0-0/N` → N；`format_size` 已有格式化。
+  5. 单层 `list_folder` 全探；`_collect_tree` 每子文件夹 limit=50。
+- 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
+- 状态：**已完成（2026-09 第 6 次发布）**，待部署。
+  - new worker/main.py SHA=`45033911…`、worker/gdrive.py SHA=`2D1D39AD…`（CHECKSUMS 已更新）。
+
 ---
 
 ## 七、验收后交付

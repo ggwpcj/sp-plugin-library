@@ -226,6 +226,26 @@ def parse_folder_page(body: str) -> List[Dict[str, object]]:
     return items
 
 
+_CONTENT_RANGE_BYTES_RE = re.compile(r"bytes\s+\d+-\d+\s*/\s*(\d+)", re.IGNORECASE)
+
+
+def parse_size_from_content_range(value: str) -> int:
+    """从 `Content-Range: bytes 0-0/<total>` 或 `bytes */<total>` 提取总大小。
+
+    谷歌网盘下载直链对公开文件支持 Range 请求（206），且不受大文件
+    病毒确认页影响；返回 1 字节与该头部即可拿到文件真实大小。
+    """
+    if not value:
+        return 0
+    match = _CONTENT_RANGE_BYTES_RE.search(str(value))
+    if not match:
+        return 0
+    try:
+        return int(match.group(1))
+    except (TypeError, ValueError):
+        return 0
+
+
 def format_size(size_bytes: object) -> str:
     try:
         size = int(size_bytes or 0)

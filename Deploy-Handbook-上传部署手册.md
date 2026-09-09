@@ -21,6 +21,32 @@ SAULT : source_files=10（含 3 手册）
 推送    : 源码 8c3d285；PR #3 分支 a919000（open，待上游合并）
 ```
 
+```
+发布轮次  : v1.4 第 4 轮（表格交互修复：勾选框/单击折叠/双击进入）→ 第 5 次上传 ✅ 2026-09 已完成
+版本      : v1.4（不许升版本）
+包名      : sp-gdrive-downloader-v1.4.pkg
+sha256    : e8bfaf0b6348f5220e3da252dd1c2ca865bdca3ce869e4cbe1817e729e1899ed ✅
+打包输出  : E:\yuanma\gugechajian-0905\release-v1.4-r5（全新目录）
+Release ID: 384015546
+旧asset ID: 551686576（已删）
+新asset ID: 552339492 ✅
+SAULT : source_files=10（含 3 手册）
+推送    : 源码 39c3f87→6f0ecdf；PR #3 分支 fcc9197（open，待上游合并）
+```
+
+```
+发布轮次  : v1.4 第 5 轮（文件大小显示：Range Content-Range 探测）→ 第 6 次上传 ⏳ 待部署
+版本      : v1.4（不许升版本）
+包名      : sp-gdrive-downloader-v1.4.pkg
+sha256    : <步骤 8 填>
+打包输出  : E:\yuanma\gugechajian-0905\release-v1.4-r6（全新目录）
+Release ID: 384015546
+旧asset ID: 552339492（待删）
+新asset ID: <待上传>
+SAULT : source_files=10（含 3 手册）
+推送    : 源码 <待提交>
+```
+
 ---
 
 ## 一、SP 在线更新机制与校验契约（部署铁律）
