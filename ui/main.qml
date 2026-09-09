@@ -27,6 +27,29 @@ PluginWorkspacePage {
     property var expandedSet: ({})
     property int lastPressRow: -1
     property int lastPressTime: 0
+    property var pendingToggleData: null
+    property int pendingToggleRow: -1
+    property bool doubleConsumed: false
+
+    Timer {
+        id: rowToggleTimer
+        interval: 320
+        repeat: false
+        onTriggered: {
+            var d = root.pendingToggleData
+            root.pendingToggleData = null
+            root.pendingToggleRow = -1
+            if (d)
+                root.toggleRow(d)
+        }
+    }
+
+    Timer {
+        id: doubleGuardTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.doubleConsumed = false
+    }
 
     Component.onCompleted: {
         if (depthBox) depthBox.currentIndex = (root.depthMode === "current") ? 1 : 0
@@ -198,6 +221,66 @@ PluginWorkspacePage {
         else
             root.expandedSet[id] = true
         root.renderTree()
+    }
+
+    function rowIsFolder(data) {
+        return !!(data && String(data.type || "") === "folder")
+    }
+
+    function handleRowPressed(row, data, modifiers) {
+        var now = (new Date()).getTime()
+        var isDouble = (row === root.lastPressRow) && (now - root.lastPressTime) <= 400
+        root.lastPressRow = row
+        root.lastPressTime = now
+        if (isDouble) {
+            if (root.doubleConsumed)
+                return
+            root.doubleConsumed = true
+            root.doubleGuardTimer.restart()
+            root.rowToggleTimer.stop()
+            root.pendingToggleData = null
+            root.pendingToggleRow = -1
+            if (root.rowIsFolder(data))
+                root.toggleRow(data)
+            else
+                table.standardSelectRow(row, modifiers)
+            return
+        }
+        if (root.rowIsFolder(data)) {
+            root.pendingToggleData = null
+            root.pendingToggleRow = -1
+            root.pendingToggleData = data
+            root.pendingToggleRow = row
+            root.rowToggleTimer.restart()
+            return
+        }
+        root.pendingToggleData = null
+        root.pendingToggleRow = -1
+        root.rowToggleTimer.stop()
+        table.standardSelectRow(row, modifiers)
+    }
+
+    function handleRowDoubleClick(row, data) {
+        if (root.doubleConsumed)
+            return
+        root.doubleConsumed = true
+        root.doubleGuardTimer.restart()
+        root.rowToggleTimer.stop()
+        root.pendingToggleData = null
+        root.pendingToggleRow = -1
+        root.lastPressRow = -1
+        root.lastPressTime = 0
+        if (root.rowIsFolder(data))
+            root.toggleRow(data)
+        else
+            table.standardSelectRow(row, 0)
+    }
+
+    function handleRowContext(row, data, sourceItem, x, y) {
+        table.standardSelectContextRow(row)
+        root.contextRowIndex = row
+        root.contextRowData = data
+        menu.openForActionsAtItem(root.contextActions(data), sourceItem, x, y)
     }
 
     function buildSaveDirectory(entry) {
@@ -704,7 +787,7 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
             standardSelectionEnabled: true
             rowHeight: PluginTheme.controlHeight
 
-            delegate: AppTableCell {
+            delegate: Item {
                 required property int index
                 required property string rowId
                 required property string name
@@ -714,84 +797,59 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
                 required property bool expanded
                 required property bool hasChildren
 
-                property real colCheck: table.width * 0.09
-                property real colName: table.width * 0.44
-                property real colSize: table.width * 0.18
-
                 width: table.width
                 height: table.rowHeight
-                text: ""
-                rowInteractionEnabled: true
-                listView: table
-                eventTarget: table.pointerTarget
-                rowIndex: index
-                rowData: rowsModel.get(index)
-                rightClickOnRelease: true
 
-                onRowPressed: function(row, data, modifiers) {
-                    var isFolder = (data && String(data.type || "") === "folder")
-                    var now = (new Date()).getTime()
-                    if (isFolder && row === root.lastPressRow && (now - root.lastPressTime) < 450) {
-                        root.lastPressRow = -1
-                        root.lastPressTime = 0
-                        root.toggleRow(data)
-                    } else {
-                        root.lastPressRow = row
-                        root.lastPressTime = now
-                        table.standardSelectRow(row, modifiers)
-                    }
-                }
-                onRowContextRequested: function(row, data, sourceItem, x, y) {
-                    table.standardSelectContextRow(row)
-                    root.contextRowIndex = row
-                    root.contextRowData = data
-                    menu.openForActionsAtItem(root.contextActions(data), sourceItem, x, y)
-                }
+                Row {
+                    anchors.fill: parent
+                    spacing: 0
 
-                AppCheckBox {
-                    id: checkBox
-                    anchors.left: parent.left
-                    anchors.leftMargin: PluginTheme.dp(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: PluginTheme.dp(24)
-                    height: PluginTheme.dp(24)
-                    enabled: type !== "folder"
-                    checked: rowsModel.get(index) ? rowsModel.get(index).checked : false
-                    onToggled: function() {
-                        if (index >= 0 && index < rowsModel.count) {
-                            rowsModel.setProperty(index, "checked", checked)
+                    GDriveCell {
+                        id: cellCheck
+                        cellRow: index
+                        cellData: rowsModel.get(index)
+                        width: table.width * 0.09
+                        text: ""
+                        embeddedControlRole: "check"
+                        embeddedControlRowInteractionEnabled: true
+                        embeddedControl: Component {
+                            AppCheckBox {
+                                anchors.fill: parent
+                                indicatorOnly: true
+                                enabled: !cellCheck.cellData || String(cellCheck.cellData.type || "") !== "folder"
+                                checked: cellCheck.cellData ? cellCheck.cellData.checked === true : false
+                                onClicked: {
+                                    if (cellCheck.cellRow >= 0 && cellCheck.cellRow < rowsModel.count)
+                                        rowsModel.setProperty(cellCheck.cellRow, "checked", checked)
+                                }
+                            }
                         }
                     }
-                }
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: colCheck + depth * PluginTheme.dp(16) + PluginTheme.dp(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: colName - depth * PluginTheme.dp(16) - PluginTheme.dp(8)
-                    elide: Text.ElideMiddle
-                    text: (type === "folder" ? (expanded ? "▼ " : "▶ ") : "  ") + name
-                    color: type === "folder" ? PluginTheme.primary : PluginTheme.text
-                    font.pixelSize: PluginTheme.smallFontSize
-                }
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: colCheck + colName + PluginTheme.dp(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: colSize - PluginTheme.dp(8)
-                    elide: Text.ElideRight
-                    text: size
-                    color: PluginTheme.mutedText
-                    font.pixelSize: PluginTheme.smallFontSize
-                }
-                Text {
-                    anchors.left: parent.left
-                    anchors.leftMargin: colCheck + colName + colSize + PluginTheme.dp(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: table.width - colCheck - colName - colSize - PluginTheme.dp(8)
-                    elide: Text.ElideRight
-                    text: type === "folder" ? "文件夹" : "文件"
-                    color: type === "folder" ? PluginTheme.primary : PluginTheme.mutedText
-                    font.pixelSize: PluginTheme.smallFontSize
+
+                    GDriveCell {
+                        id: cellName
+                        cellRow: index
+                        cellData: rowsModel.get(index)
+                        width: table.width * 0.44
+                        text: (type === "folder" ? (expanded ? "▼ " : "▶ ") : "　") + name
+                        align: Text.AlignLeft
+                    }
+
+                    GDriveCell {
+                        id: cellSize
+                        cellRow: index
+                        cellData: rowsModel.get(index)
+                        width: table.width * 0.18
+                        text: size
+                    }
+
+                    GDriveCell {
+                        id: cellType
+                        cellRow: index
+                        cellData: rowsModel.get(index)
+                        width: table.width - table.width * 0.09 - table.width * 0.44 - table.width * 0.18
+                        text: type === "folder" ? "文件夹" : "文件"
+                    }
                 }
             }
         }
@@ -817,6 +875,38 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         id: routeMenu
         onActionTriggered: function(action) {
             root.handleRouteAction(action)
+        }
+    }
+
+    component GDriveCell: AppTableCell {
+        property int cellRow: -1
+        property var cellData: null
+
+        height: table.rowHeight
+        rowInteractionEnabled: true
+        listView: table
+        eventTarget: table.pointerTarget
+        rowIndex: cellRow
+        rowData: cellData
+        rightClickOnRelease: true
+        editing: false
+
+        editorComponent: Component {
+            AppTextField {
+                anchors.fill: parent
+                embeddedInTable: true
+                floatingPlaceholder: false
+            }
+        }
+
+        onRowPressed: function(row, data, modifiers) {
+            root.handleRowPressed(row, data, modifiers)
+        }
+        onEditRequested: function(rowIndex) {
+            root.handleRowDoubleClick(cellRow, cellData)
+        }
+        onRowContextRequested: function(row, data, sourceItem, x, y) {
+            root.handleRowContext(row, data, sourceItem, x, y)
         }
     }
 
