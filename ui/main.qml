@@ -204,8 +204,10 @@ PluginWorkspacePage {
     }
 
     function startDownload(entry) {
-        if (!entry || !entry.downloadUrl)
+        if (!entry || !entry.downloadUrl) {
+            root.spPlugin.log("跳过下载：条目无 downloadUrl → " + String(entry && entry.name ? entry.name : "(空)"))
             return
+        }
         var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         var directory = root.buildSaveDirectory(entry)
         if (directory.length === 0) {
@@ -269,6 +271,7 @@ PluginWorkspacePage {
 
     function handleContextAction(action, row) {
         var current = row || root.contextRowData
+        root.spPlugin.log("上下文动作 action=" + String(action || "") + " 类型=" + String((current && current.type) || ""))
         if (action === "open") {
             root.openFolder(current)
         } else if (action === "download-one") {
@@ -573,6 +576,10 @@ PluginWorkspacePage {
                 return root.contextActions(currentRow)
             }
             onRowActivated: function(row) {
+                var rtype = String((row && row.type) || "")
+                var rname = String((row && row.name) || "")
+                var rid = String((row && (row.id || row.folderId)) || "")
+                root.spPlugin.log("双击/激活行 type=" + rtype + " name=" + rname + " id=" + rid)
                 if (root.isFolderRow(row))
                     root.openFolder(row)
                 else
