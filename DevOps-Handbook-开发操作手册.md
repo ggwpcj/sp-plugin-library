@@ -183,13 +183,13 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. `parse_size_from_content_range`：解析 `bytes 0-0/N` → N；`format_size` 已有格式化。
   5. 单层 `list_folder` 全探；`_collect_tree` 每子文件夹 limit=50。
 - 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
-- 状态：**已完成并发布（2026-09 第 7 次发布，表格交互改用官方 PluginDataTable 重写）**。
-  - 重写点：弃用 AppTableView/AppTableCell/勾选框/自研树逻辑，改用 PluginDataTable（参考 sp-网盘管理）——`onRowActivated` 双击进目录/下载文件、`selectedItems()` 选中下载、`contextActionsProvider` 右键菜单；删除全部自研 tap 检测与折叠展开定时器。
-  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`08076b9c04fe0dcba0f0a3a4d3fa5c9d24f163611805dee32d29398f4cc57b79`**（23982B，source_files=10）。
-  - Release 384015546 沿用；**删旧 asset 552802526，新 asset ID `554010280`**。
-  - 远程 HASH_MATCH 通过；lists.yaml 写 08076b9c（小写）推送 `6940145`；raw 已确认。
-  - PR #3 分支同步 head=`4ceb9c4`，待上游合并；ui/main.qml CHECKSUMS→947E4909…、worker/main.py→310D4904…。
-  - ⚠️ PluginDataTable 交互（单击选中/双击进目录/右键菜单）需 SP 安装最新包实测确认。
+- 状态：**已完成并发布（2026-09 第 8 次发布，双击/右键动作加诊断日志）**。
+  - 重写点：弃用 AppTableView/AppTableCell/勾选框/自研树逻辑，改用 PluginDataTable（参考 sp-网盘管理）——`onRowActivated` 双击进目录/下载文件、`selectedItems()` 选中下载、`contextActionsProvider` 右键菜单；删除全部自研 tap 检测与折叠展开定时器。第 8 次在 onRowActivated/handleContextAction/startDownload 增加 spPlugin.log 诊断输出，用于定位远程机双击未触发问题（若日志无"双击/激活行"= 旧包未生效）。
+  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`ad0ddffcbefc1ba32571992cfbe1e7839e9d19f281ff684a29631b4065cc5b19`**（24270B，source_files=10）。
+  - Release 384015546 沿用；**删旧 asset 554010280，新 asset ID `554629216`**。
+  - 远程 HASH_MATCH 通过；lists.yaml 写 ad0ddff（小写）推送 `7f5668f`；raw 已确认。
+  - PR #3 分支同步 head=`fcfd6fd`，待上游合并；ui/main.qml CHECKSUMS→35E50A9F…、worker/main.py→310D4904…。
+  - ⚠️ PluginDataTable 交互（单击选中/双击进目录/右键菜单）需在远程 SP 安装最新包实测确认；如双击后 diagnostic 无"双击/激活行"日志，则远程拉取的是旧 catalog 包。
 
 ---
 
