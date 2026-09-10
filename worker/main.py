@@ -301,7 +301,7 @@ def list_folder(context: Any, params: dict[str, Any]) -> dict[str, Any]:
 
     context.progress(1.0, "解析完成")
 
-    return {"folderId": folder_id, "items": items, "totalSize": total_bytes}
+    return {"folderId": folder_id, "folderName": folder_name, "items": items, "totalSize": total_bytes}
 
 
 class _Budget:

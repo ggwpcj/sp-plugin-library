@@ -11,7 +11,6 @@ PluginWorkspacePage {
     property string route: String(root.spPlugin.get("route", "second"))
     property string depthMode: String(root.spPlugin.get("depthMode", "tree"))
     property string storageMode: String(root.spPlugin.get("storageMode", "original"))
-    property int contextRowIndex: -1
     property var contextRowData: null
     property string totalSizeText: ""
     property var queueByRequest: ({})
@@ -21,35 +20,9 @@ PluginWorkspacePage {
     property int failedCount: 0
     property bool autoRetry: true
     property var pendingRetry: ({})
-    property var treeData: []
-    property bool treeLoaded: false
+    property var driveRows: []
     property string treeRootUrl: ""
-    property var expandedSet: ({})
-    property int lastPressRow: -1
-    property int lastPressTime: 0
-    property var pendingToggleData: null
-    property int pendingToggleRow: -1
-    property bool doubleConsumed: false
-
-    Timer {
-        id: rowToggleTimer
-        interval: 320
-        repeat: false
-        onTriggered: {
-            var d = root.pendingToggleData
-            root.pendingToggleData = null
-            root.pendingToggleRow = -1
-            if (d)
-                root.toggleRow(d)
-        }
-    }
-
-    Timer {
-        id: doubleGuardTimer
-        interval: 600
-        repeat: false
-        onTriggered: root.doubleConsumed = false
-    }
+    property var pathStack: []
 
     Component.onCompleted: {
         if (depthBox) depthBox.currentIndex = (root.depthMode === "current") ? 1 : 0
@@ -120,21 +93,66 @@ PluginWorkspacePage {
         root.chooseRoute(action)
     }
 
-    function loadFolderTree(url) {
+    function folderIdFor(row) {
+        return String((row && (row.id || row.folderId)) || "")
+    }
+
+    function isFolderRow(row) {
+        return !!(row && String(row.type || "") === "folder")
+    }
+
+    function resolveFolderTree(url) {
+        if (!/\/drive\/folders\//.test(url))
+            return ""
+        var m = url.match(/\/drive\/folders\/([^/?#]+)/)
+        return (m && m[1]) || ""
+    }
+
+    function loadFolder(url) {
         linkField.text = url
-        if (root.depthMode === "current") {
-            root.statusText = "正在获取当前目录内容..."
-            root.requestId = root.spPlugin.call("list_folder", {"url": url, "route": root.route}, 300000)
-        } else {
-            root.statusText = "正在获取完整目录树..."
-            root.requestId = root.spPlugin.call("list_folder_tree", {"url": url, "route": root.route}, 300000)
-        }
+        root.statusText = "正在获取目录内容..."
+        root.requestId = root.spPlugin.call("list_folder", {"url": url, "route": root.route}, 300000)
     }
 
     function loadFileUrl(url) {
         linkField.text = url
         root.statusText = "正在获取文件下载地址..."
         root.requestId = root.spPlugin.call("resolve_download", {"url": url, "route": root.route}, 120000)
+    }
+
+    function openFolder(row) {
+        if (!root.isFolderRow(row))
+            return
+        var fid = root.folderIdFor(row)
+        if (!fid)
+            return
+        var next = root.pathStack.slice()
+        next.push({"id": fid, "name": String(row.name || "")})
+        root.pathStack = next
+        root.loadFolder("https://drive.google.com/drive/folders/" + fid)
+    }
+
+    function goUp() {
+        if (root.pathStack.length <= 1)
+            return
+        var next = root.pathStack.slice(0, root.pathStack.length - 1)
+        root.pathStack = next
+        if (next.length > 0) {
+            var parent = next[next.length - 1]
+            root.loadFolder("https://drive.google.com/drive/folders/" + String(parent.id || ""))
+        } else {
+            root.parseLink()
+        }
+    }
+
+    function goToRoot() {
+        root.pathStack = []
+        root.parseLink()
+    }
+
+    function breadcrumbText() {
+        var names = root.pathStack.map(function(row) { return String(row.name || "") })
+        return "/" + names.join("/")
     }
 
     function parseLink() {
@@ -147,140 +165,17 @@ PluginWorkspacePage {
             root.spPlugin.showToast("链接必须以 https://drive.google.com/ 开头", "warning", "gdrive-bad-link")
             return
         }
-        root.treeData = []
-        root.treeLoaded = false
+        root.driveRows = []
+        root.pathStack = []
         root.treeRootUrl = link
         if (/\/drive\/folders\//.test(link)) {
-            root.loadFolderTree(link)
+            var fid = root.resolveFolderTree(link)
+            if (fid)
+                root.pathStack = [{"id": fid, "name": ""}]
+            root.loadFolder(link)
         } else {
             root.loadFileUrl(link)
         }
-    }
-
-    function flattenTree(nodes, depth, expandedSet, rows) {
-        for (var i = 0; i < nodes.length; i++) {
-            var node = nodes[i]
-            var isFolder = String(node.type || "file") === "folder"
-            rows.push({
-                "rowId": String(node.id || ("node-" + rows.length)),
-                "name": String(node.name || ""),
-                "size": String(node.size || ""),
-                "type": isFolder ? "folder" : "file",
-                "downloadUrl": String(node.downloadUrl || ""),
-                "path": String(node.path || ""),
-                "checked": false,
-                "depth": depth,
-                "hasChildren": isFolder && (node.children || []).length > 0,
-                "expanded": expandedSet.indexOf(String(node.id || "")) >= 0,
-                "entry": node
-            })
-            if (isFolder && expandedSet.indexOf(String(node.id || "")) >= 0) {
-                flattenTree(node.children || [], depth + 1, expandedSet, rows)
-            }
-        }
-    }
-
-    function renderTree() {
-        rowsModel.clear()
-        var expandedSet = []
-        for (var id in root.expandedSet) {
-            expandedSet.push(id)
-        }
-        var rows = []
-        if (root.treeData && root.treeData.length > 0) {
-            flattenTree(root.treeData, 0, expandedSet, rows)
-        }
-        for (var i = 0; i < rows.length; i++) {
-            rowsModel.append(rows[i])
-        }
-        if (rows.length === 0) {
-            root.statusText = "目录为空或已全部折叠"
-            root.totalSizeText = ""
-        } else {
-            root.statusText = "共显示 " + rows.length + " 项；单击选中，双击文件夹展开，勾选文件后点\"开始下载\""
-        }
-    }
-
-    function toggleRow(row) {
-        if (!row)
-            return
-        if (row.type !== "folder")
-            return
-        if (root.depthMode === "current") {
-            var folderId = String(row.rowId || row.id || "")
-            if (!folderId || folderId.indexOf("row-") === 0 || folderId.indexOf("node-") === 0)
-                return
-            root.loadFolderTree("https://drive.google.com/drive/folders/" + folderId)
-            return
-        }
-        var id = String(row.rowId || row.id || "")
-        if (!id || id.indexOf("row-") === 0 || id.indexOf("node-") === 0)
-            return
-        if (root.expandedSet[id])
-            delete root.expandedSet[id]
-        else
-            root.expandedSet[id] = true
-        root.renderTree()
-    }
-
-    function rowIsFolder(data) {
-        return !!(data && String(data.type || "") === "folder")
-    }
-
-    function handleRowPressed(row, data, modifiers) {
-        var now = (new Date()).getTime()
-        var isDouble = (row === root.lastPressRow) && (now - root.lastPressTime) <= 400
-        root.lastPressRow = row
-        root.lastPressTime = now
-        if (isDouble) {
-            if (root.doubleConsumed)
-                return
-            root.doubleConsumed = true
-            root.doubleGuardTimer.restart()
-            root.rowToggleTimer.stop()
-            root.pendingToggleData = null
-            root.pendingToggleRow = -1
-            if (root.rowIsFolder(data))
-                root.toggleRow(data)
-            else
-                table.standardSelectRow(row, modifiers)
-            return
-        }
-        if (root.rowIsFolder(data)) {
-            root.pendingToggleData = null
-            root.pendingToggleRow = -1
-            root.pendingToggleData = data
-            root.pendingToggleRow = row
-            root.rowToggleTimer.restart()
-            return
-        }
-        root.pendingToggleData = null
-        root.pendingToggleRow = -1
-        root.rowToggleTimer.stop()
-        table.standardSelectRow(row, modifiers)
-    }
-
-    function handleRowDoubleClick(row, data) {
-        if (root.doubleConsumed)
-            return
-        root.doubleConsumed = true
-        root.doubleGuardTimer.restart()
-        root.rowToggleTimer.stop()
-        root.pendingToggleData = null
-        root.pendingToggleRow = -1
-        root.lastPressRow = -1
-        root.lastPressTime = 0
-        if (root.rowIsFolder(data))
-            root.toggleRow(data)
-        else
-            table.standardSelectRow(row, 0)
-    }
-
-    function handleRowContext(row, data, sourceItem, x, y) {
-        table.standardSelectContextRow(row)
-        root.contextRowIndex = row
-        root.contextRowData = data
-        menu.openForActionsAtItem(root.contextActions(data), sourceItem, x, y)
     }
 
     function buildSaveDirectory(entry) {
@@ -311,7 +206,7 @@ PluginWorkspacePage {
     function startDownload(entry) {
         if (!entry || !entry.downloadUrl)
             return
-var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
+        var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         var directory = root.buildSaveDirectory(entry)
         if (directory.length === 0) {
             root.spPlugin.showToast("请先选择保存目录", "warning", "gdrive-no-directory")
@@ -338,106 +233,59 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         root.queuedCount++
     }
 
-    function downloadSelected() {
-        var rows = selection.selectedRowArray()
-        var started = 0
-        var source = []
-        for (var i = 0; i < rowsModel.count; i++) {
-            if (rowsModel.get(i).checked) {
-                source.push(i)
-            }
-        }
-        if (source.length === 0) {
-            for (var j = 0; j < rows.length; j++) {
-                var row = Number(rows[j])
-                if (row >= 0 && row < rowsModel.count)
-                    source.push(row)
-            }
-        }
-        if (source.length === 0) {
-            root.spPlugin.showToast("请先勾选要下载的文件", "warning", "gdrive-no-selection")
-            return
-        }
-        for (var k = 0; k < source.length; k++) {
-            var data = rowsModel.get(source[k])
-            if (data && data.downloadUrl && data.downloadUrl.length > 0) {
-                root.startDownload(data)
-                started++
-            }
-        }
-        if (started > 0) {
-            root.spPlugin.showToast("已加入下载队列 " + started + " 个任务", "success", "gdrive-download-queued")
-        } else {
-            root.spPlugin.showToast("所选项目中没有可下载的文件", "warning", "gdrive-no-downloadable")
-        }
+    function itemsWithUrl() {
+        var selected = table.selectedItems()
+        if (!selected || selected.length === 0)
+            return []
+        return selected.filter(function(row) {
+            return root.isFolderRow(row) ? false : (row && row.downloadUrl && String(row.downloadUrl).length > 0)
+        })
     }
 
-    function retryTask(key) {
-        var found = null
-        for (var id in root.queueByTask) {
-            if (id === key || root.queueByTask[id].key === key) {
-                found = root.queueByTask[id]
-                break
-            }
-        }
-        if (!found || !found.taskId)
+    function downloadSelected() {
+        var targets = root.itemsWithUrl()
+        if (targets.length === 0) {
+            root.spPlugin.showToast("请先选中要下载的文件", "warning", "gdrive-no-selection")
             return
-        found.status = "resuming"
-        root.spPlugin.log("手动续传：" + String(found.name))
-        root.spPlugin.controlDownload("resume", String(found.taskId), false)
+        }
+        for (var i = 0; i < targets.length; i++)
+            root.startDownload(targets[i])
+        root.spPlugin.showToast("已加入下载队列 " + targets.length + " 个任务", "success", "gdrive-download-queued")
     }
 
     function contextActions(row) {
         var actions = []
         if (row && row.type === "folder")
-            actions.push({"text": "展开/折叠该文件夹", "action": "toggle-folder"})
+            actions.push({"text": "打开", "action": "open"})
         if (row && row.type === "file")
             actions.push({"text": "下载该文件", "action": "download-one"})
         actions.push({"separator": true})
-        actions.push({"text": "展开全部目录", "action": "expand-all"})
-        actions.push({"text": "折叠全部目录", "action": "collapse-all"})
+        actions.push({"text": "回到根目录", "action": "go-root"})
         actions.push({"text": "刷新当前链接", "action": "refresh"})
         actions.push({"separator": true})
         actions.push({"text": "下载选中项", "action": "download-selected"})
         return actions
     }
 
-    function expandNodeRecursive(node, set) {
-        if (!node || node.type !== "folder")
-            return
-        var id = String(node.id || "")
-        if (id && id.indexOf("row-") !== 0 && id.indexOf("node-") !== 0)
-            set[id] = true
-        var children = node.children || []
-        for (var i = 0; i < children.length; i++) {
-            expandNodeRecursive(children[i], set)
-        }
-    }
-
-    function handleContextAction(action) {
-        var row = root.contextRowData
-        if (action === "toggle-folder") {
-            root.toggleRow(row)
+    function handleContextAction(action, row) {
+        var current = row || root.contextRowData
+        if (action === "open") {
+            root.openFolder(current)
         } else if (action === "download-one") {
-            root.startDownload(row)
-        } else if (action === "expand-all") {
-            root.expandedSet = ({})
-            for (var i = 0; i < root.treeData.length; i++) {
-                expandNodeRecursive(root.treeData[i], root.expandedSet)
-            }
-            root.renderTree()
-            root.spPlugin.showToast("已展开全部目录", "info", "gdrive-expand-all")
-        } else if (action === "collapse-all") {
-            root.expandedSet = ({})
-            root.renderTree()
-            root.spPlugin.showToast("已折叠全部目录", "info", "gdrive-collapse-all")
-        } else if (action === "refresh") {
-            if (root.treeRootUrl.length > 0)
-                root.loadFolderTree(root.treeRootUrl)
-            else
-                root.parseLink()
+            root.startDownload(current)
         } else if (action === "download-selected") {
             root.downloadSelected()
+        } else if (action === "refresh") {
+            if (root.pathStack.length > 0) {
+                var cur = root.pathStack[root.pathStack.length - 1]
+                root.loadFolder("https://drive.google.com/drive/folders/" + String(cur.id || ""))
+            } else if (root.treeRootUrl.length > 0) {
+                root.loadFolder(root.treeRootUrl)
+            } else {
+                root.parseLink()
+            }
+        } else if (action === "go-root") {
+            root.goToRoot()
         }
     }
 
@@ -462,59 +310,39 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
                 return
             }
             var result = response.result || {}
-            if (result.tree) {
-                root.treeData = result.tree
-                root.treeLoaded = true
-                root.expandedSet = ({})
-                for (var ti = 0; ti < root.treeData.length; ti++) {
-                    expandNodeRecursive(root.treeData[ti], root.expandedSet)
+            if (result.items) {
+                root.driveRows = result.items
+                root.pathStack = root.pathStack || []
+                if (root.pathStack.length > 0 && !String(root.pathStack[0].name || "").length) {
+                    var top = root.pathStack[0]
+                    top.name = String(result.folderName || result.name || top.name || "")
+                    root.pathStack = root.pathStack.slice()
                 }
-                root.renderTree()
                 root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
-                var extra = result.truncated ? "；部分目录因内容过多已截断" : ""
-                root.statusText = "目录树共 " + Number(result.totalFiles || 0) + " 个文件，总大小 " + root.totalSizeText + extra + "；单击选中，双击文件夹展开，勾选文件后点\"开始下载\""
+                root.statusText = "共 " + result.items.length + " 项，总大小 " + root.totalSizeText
+                            + "；单击选中，双击文件夹进入，点\"开始下载\"下载选中文件"
                 return
             }
-            var items = result.items || []
-            rowsModel.clear()
-            for (var i = 0; i < items.length; i++) {
-                var item = items[i]
-                rowsModel.append({
-                    "rowId": String(item.id || ("row-" + i)),
-                    "name": String(item.name || ""),
-                    "size": String(item.size || item.sizeDisplay || ""),
-                    "type": String(item.type || "file"),
-                    "downloadUrl": String(item.downloadUrl || ""),
-                    "path": String(item.path || ""),
-                    "checked": false,
-                    "depth": 0,
-                    "hasChildren": false,
-                    "expanded": false,
-                    "entry": item
-                })
-            }
-            if (items.length === 0) {
-                var singleUrl = String(result.url || "")
-                if (singleUrl && singleUrl.length > 0) {
-                    rowsModel.append({
-                        "rowId": "file-0",
-                        "name": String(result.fileName || "文件"),
-                        "size": "",
-                        "type": "file",
-                        "downloadUrl": singleUrl,
-                        "path": "",
-                        "checked": false,
-                        "depth": 0,
-                        "hasChildren": false,
-                        "expanded": false,
-                        "entry": result
-                    })
+            var singleUrl = String(result.url || "")
+            var singleItem = null
+            if (singleUrl && singleUrl.length > 0) {
+                singleItem = {
+                    "id": "file-0",
+                    "name": String(result.fileName || "文件"),
+                    "size": "",
+                    "type": "file",
+                    "downloadUrl": singleUrl,
+                    "path": "",
+                    "checked": false
                 }
+                root.driveRows = [singleItem]
+                root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
+                root.statusText = "单文件解析完成；单击选中，点\"开始下载\"下载"
+            } else {
+                root.driveRows = []
+                root.totalSizeText = ""
+                root.statusText = "未解析到内容"
             }
-            root.treeData = []
-            root.treeLoaded = false
-            root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
-            root.statusText = "共 " + rowsModel.count + " 项，总大小 " + root.totalSizeText + "；勾选文件后点击\"开始下载\""
         }
 
         function onDirectorySelected(requestId, path, completed) {
@@ -674,200 +502,85 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         }
 
         Row {
-            id: breadcrumbRow
+            id: navRow
             width: parent.width
             spacing: root.sectionSpacing
-            visible: root.treeLoaded
+            visible: root.driveRows.length > 0 || root.pathStack.length > 0
 
-            Text {
-                text: "目录："
-                color: PluginTheme.mutedText
-                font.pixelSize: PluginTheme.smallFontSize
-                anchors.verticalCenter: parent.verticalCenter
+            AppButton {
+                id: upButton
+                text: "上一级"
+                enabled: root.pathStack.length > 1 && root.requestId.length === 0
+                onClicked: root.goUp()
             }
-
+            AppButton {
+                id: rootButton
+                text: "根目录"
+                enabled: root.requestId.length === 0 && root.driveRows.length > 0
+                onClicked: root.goToRoot()
+            }
             Text {
-                width: parent.width - expandAllButton.width - collapseAllButton.width - refreshButton.width - parent.spacing * 4 - 40
+                width: parent.width - upButton.width - rootButton.width - refreshButton.width - parent.spacing * 4
                 elide: Text.ElideMiddle
-                text: root.treeRootUrl
+                verticalAlignment: Text.AlignVCenter
+                text: root.breadcrumbText()
                 color: PluginTheme.text
                 font.pixelSize: PluginTheme.smallFontSize
                 anchors.verticalCenter: parent.verticalCenter
             }
-
-            AppButton {
-                id: expandAllButton
-                text: "展开全部"
-                outlineGhost: false
-                anchors.verticalCenter: parent.verticalCenter
-                enabled: root.requestId.length === 0
-                onClicked: {
-                    root.expandedSet = ({})
-                    for (var i = 0; i < root.treeData.length; i++) {
-                        expandNodeRecursive(root.treeData[i], root.expandedSet)
-                    }
-                    root.renderTree()
-                }
-            }
-
-            AppButton {
-                id: collapseAllButton
-                text: "折叠全部"
-                outlineGhost: false
-                anchors.verticalCenter: parent.verticalCenter
-                enabled: root.requestId.length === 0
-                onClicked: {
-                    root.expandedSet = ({})
-                    root.renderTree()
-                }
-            }
-
             AppButton {
                 id: refreshButton
                 text: "刷新"
-                anchors.verticalCenter: parent.verticalCenter
                 enabled: root.requestId.length === 0
                 onClicked: {
-                    if (root.treeRootUrl.length > 0)
-                        root.loadFolderTree(root.treeRootUrl)
-                    else
+                    if (root.pathStack.length > 0) {
+                        var cur = root.pathStack[root.pathStack.length - 1]
+                        root.loadFolder("https://drive.google.com/drive/folders/" + String(cur.id || ""))
+                    } else if (root.treeRootUrl.length > 0) {
+                        root.loadFolder(root.treeRootUrl)
+                    } else {
                         root.parseLink()
+                    }
                 }
             }
         }
 
-        Row {
-            id: headerRow
-            width: table.width
-            height: PluginTheme.controlHeight
-            visible: rowsModel.count > 0
-
-            Item {
-                width: table.width * 0.09
-                height: parent.height
-            }
-            Text {
-                width: table.width * 0.44
-                height: parent.height
-                verticalAlignment: Text.AlignVCenter
-                text: "文件名"
-                color: PluginTheme.mutedText
-                font.pixelSize: PluginTheme.smallFontSize
-                font.bold: true
-            }
-            Text {
-                width: table.width * 0.18
-                height: parent.height
-                verticalAlignment: Text.AlignVCenter
-                text: "大小"
-                color: PluginTheme.mutedText
-                font.pixelSize: PluginTheme.smallFontSize
-                font.bold: true
-            }
-            Text {
-                width: table.width - table.width * 0.09 - table.width * 0.44 - table.width * 0.18
-                height: parent.height
-                verticalAlignment: Text.AlignVCenter
-                text: "类型"
-                color: PluginTheme.mutedText
-                font.pixelSize: PluginTheme.smallFontSize
-                font.bold: true
-            }
-        }
-
-        AppTableView {
+        PluginDataTable {
             id: table
             width: parent.width
-            height: Math.max(80, parent.height
+            height: Math.max(120, parent.height
                              - linkRow.implicitHeight - pathRow.implicitHeight
-                             - breadcrumbRow.implicitHeight - headerRow.implicitHeight
+                             - depthStorageRow.implicitHeight - navRow.implicitHeight
                              - parent.spacing * 5)
-            model: rowsModel
-            selectionController: selection
-            standardSelectionEnabled: true
-            rowHeight: PluginTheme.controlHeight
-
-            delegate: Item {
-                required property int index
-                required property string rowId
-                required property string name
-                required property string size
-                required property string type
-                required property int depth
-                required property bool expanded
-                required property bool hasChildren
-
-                width: table.width
-                height: table.rowHeight
-
-                Row {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    GDriveCell {
-                        id: cellCheck
-                        cellRow: index
-                        cellData: rowsModel.get(index)
-                        width: table.width * 0.09
-                        text: ""
-                        embeddedControlRole: "check"
-                        embeddedControlRowInteractionEnabled: true
-                        embeddedControl: Component {
-                            AppCheckBox {
-                                anchors.fill: parent
-                                indicatorOnly: true
-                                enabled: !cellCheck.cellData || String(cellCheck.cellData.type || "") !== "folder"
-                                checked: cellCheck.cellData ? cellCheck.cellData.checked === true : false
-                                onClicked: {
-                                    if (cellCheck.cellRow >= 0 && cellCheck.cellRow < rowsModel.count)
-                                        rowsModel.setProperty(cellCheck.cellRow, "checked", checked)
-                                }
-                            }
-                        }
-                    }
-
-                    GDriveCell {
-                        id: cellName
-                        cellRow: index
-                        cellData: rowsModel.get(index)
-                        width: table.width * 0.44
-                        text: (type === "folder" ? (expanded ? "▼ " : "▶ ") : "　") + name
-                        align: Text.AlignLeft
-                    }
-
-                    GDriveCell {
-                        id: cellSize
-                        cellRow: index
-                        cellData: rowsModel.get(index)
-                        width: table.width * 0.18
-                        text: size
-                    }
-
-                    GDriveCell {
-                        id: cellType
-                        cellRow: index
-                        cellData: rowsModel.get(index)
-                        width: table.width - table.width * 0.09 - table.width * 0.44 - table.width * 0.18
-                        text: type === "folder" ? "文件夹" : "文件"
-                    }
-                }
+            rows: root.driveRows
+            identityProvider: function(row, index) {
+                return String((row || {}).id || index)
             }
-        }
-    }
-
-    ListModel { id: rowsModel }
-
-    AppTableSelectionController {
-        id: selection
-        rowIdentityAt: function(row) {
-            return row >= 0 && row < rowsModel.count ? String(rowsModel.get(row).rowId || "") : ""
-        }
-    }
-
-    AppContextMenu {
-        id: menu
-        onActionTriggered: function(action) {
-            root.handleContextAction(action)
+            columns: [
+                {"title": "名称", "weight": 3, "key": "name", "align": "left",
+                 "formatter": function(row) { return row.type === "folder" ? "文件夹 / " + String(row.name || "") : String(row.name || "") }},
+                {"title": "大小", "weight": 1,
+                 "formatter": function(row) {
+                     if (row.type === "folder")
+                         return ""
+                     return String(row.sizeDisplay || root.formatBytes(Number(row.sizeBytes || row.size || 0)))
+                 }},
+                {"title": "类型", "width": PluginTheme.dp(70),
+                 "formatter": function(row) { return row.type === "folder" ? "文件夹" : "文件" }},
+                {"title": "", "weight": 1}
+            ]
+            contextActionsProvider: function(selectedRows, currentRow) {
+                return root.contextActions(currentRow)
+            }
+            onRowActivated: function(row) {
+                if (root.isFolderRow(row))
+                    root.openFolder(row)
+                else
+                    root.startDownload(row)
+            }
+            onActionRequested: function(action, row) {
+                root.handleContextAction(action, row)
+            }
         }
     }
 
@@ -878,42 +591,10 @@ var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         }
     }
 
-    component GDriveCell: AppTableCell {
-        property int cellRow: -1
-        property var cellData: null
-
-        height: table.rowHeight
-        rowInteractionEnabled: true
-        listView: table
-        eventTarget: table.pointerTarget
-        rowIndex: cellRow
-        rowData: cellData
-        rightClickOnRelease: true
-        editing: false
-
-        editorComponent: Component {
-            AppTextField {
-                anchors.fill: parent
-                embeddedInTable: true
-                floatingPlaceholder: false
-            }
-        }
-
-        onRowPressed: function(row, data, modifiers) {
-            root.handleRowPressed(row, data, modifiers)
-        }
-        onEditRequested: function(rowIndex) {
-            root.handleRowDoubleClick(cellRow, cellData)
-        }
-        onRowContextRequested: function(row, data, sourceItem, x, y) {
-            root.handleRowContext(row, data, sourceItem, x, y)
-        }
-    }
-
     footerActions: AppButton {
         text: "开始下载"
         primary: true
-        enabled: root.requestId.length === 0 && rowsModel.count > 0
+        enabled: root.requestId.length === 0 && root.driveRows.length > 0
         onClicked: root.downloadSelected()
     }
 }
