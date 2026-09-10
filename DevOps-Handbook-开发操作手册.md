@@ -183,12 +183,13 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. `parse_size_from_content_range`：解析 `bytes 0-0/N` → N；`format_size` 已有格式化。
   5. 单层 `list_folder` 全探；`_collect_tree` 每子文件夹 limit=50。
 - 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
-- 状态：**已完成并发布（2026-09 第 6 次发布）**。
-  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`5a4bf0412b9897faa11d281237709653c4feb4a9984371ebed414dd792c78a8b`**（25358B，source_files=10）。
-  - Release 384015546 沿用；**删旧 asset 552339492，新 asset ID `552802526`**。
-  - 远程 HASH_MATCH 通过；lists.yaml 写 5a4bf041（小写）推送 `b5a192e`；raw 已确认。
-  - PR #3 分支同步 head=`7332ba8`，待上游合并；worker/main.py CHECKSUMS→45033911…、worker/gdrive.py→2D1D39AD…。
-  - ⚠️ 大小探测依赖 Range 请求（宿主代理），实际耗时与成功率需 SP 实测。
+- 状态：**已完成并发布（2026-09 第 7 次发布，表格交互改用官方 PluginDataTable 重写）**。
+  - 重写点：弃用 AppTableView/AppTableCell/勾选框/自研树逻辑，改用 PluginDataTable（参考 sp-网盘管理）——`onRowActivated` 双击进目录/下载文件、`selectedItems()` 选中下载、`contextActionsProvider` 右键菜单；删除全部自研 tap 检测与折叠展开定时器。
+  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`08076b9c04fe0dcba0f0a3a4d3fa5c9d24f163611805dee32d29398f4cc57b79`**（23982B，source_files=10）。
+  - Release 384015546 沿用；**删旧 asset 552802526，新 asset ID `554010280`**。
+  - 远程 HASH_MATCH 通过；lists.yaml 写 08076b9c（小写）推送 `6940145`；raw 已确认。
+  - PR #3 分支同步 head=`4ceb9c4`，待上游合并；ui/main.qml CHECKSUMS→947E4909…、worker/main.py→310D4904…。
+  - ⚠️ PluginDataTable 交互（单击选中/双击进目录/右键菜单）需 SP 安装最新包实测确认。
 
 ---
 
