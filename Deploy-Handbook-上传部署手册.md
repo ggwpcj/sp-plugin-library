@@ -35,16 +35,15 @@ SAULT : source_files=10（含 3 手册）
 ```
 
 ```
-发布轮次  : v1.4 第 8 次上传（双击/右键动作加诊断日志）✅ 2026-09 已完成
-版本      : v1.4（不许升版本）
-包名      : sp-gdrive-downloader-v1.4.pkg
-sha256    : ad0ddffcbefc1ba32571992cfbe1e7839e9d19f281ff684a29631b4065cc5b19 ✅
-打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.4-8th
-Release ID: 384015546
-旧asset ID: 554010280（已删）
-新asset ID: 554629216 ✅
-SAULT : source_files=10（含 3 手册）
-推送    : 源码 6a6d182→7f5668f；PR #3 分支 fcfd6fd（open，待上游合并）
+发布轮次  : v1.5 升版发布（用户指定升版强制远程覆盖）✅ 2026-09 已完成
+版本      : v1.5
+包名      : sp-gdrive-downloader-v1.5.pkg
+sha256    : 3e4c73397a43e94fb2cce343eff3e03b2dfa2bef51161ffd89f8bb9e78037980 ✅
+打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.5-r1
+Release ID: 388129300（新 release v1.5，非沿用 384015546）
+新asset ID: 562469028 ✅
+SAULT : source_files=13（含 3 手册 + GDriveFileTable.qml + .sp-package-ignore）
+推送    : 源码 6db3d89；PR #4 分支 859655a（open，待上游合并）
 ```
 
 ---

@@ -9,7 +9,7 @@
 | 编号 | 铁律 | 说明/后果 |
 | --- | --- | --- |
 | R-1 | **写完 lists.yaml 的 sha256 后禁止重打包** | SP 校验线上 lists.yaml sha256 == 实际 pkg 哈希；重打包哈希会变 → 校验失败 → SP 检测不到。 |
-| R-2 | **版本号不许擅自递增** | 当前 v1.4 用户明确要求保持。改版本需用户同意；三个文件（METADATA/lists.yaml/CHECKSUMS.yaml）版本必须一致。 |
+| R-2 | **版本号不许擅自递增** | 当前 v1.5（2026-09 用户明确同意从 v1.4 升到 v1.5，用于强制远程覆盖旧包）。改版本需用户同意；三个文件（METADATA/lists.yaml/CHECKSUMS.yaml）版本必须一致。 |
 | R-3 | **sha256 一律小写** | lists.yaml 写大写哈希 → SP 校验不匹配。 |
 | R-4 | **禁止"每文件/每文件夹串行请求"做列表/树** | 5000 文件=5000 请求→几分钟→超 300s 前端上限→"解析失败"。必须并行。 |
 | R-5 | **禁止递归嵌套线程池** | 外层线程池每个 worker 再开线程池 → 并发满时死锁 + 线程爆炸。改用**广度优先 + 单一线程池**（BFS）。 |
@@ -97,6 +97,7 @@
   3. 整行交互与内嵌控件抢事件：行事件统一封装进 `component XxxCell: AppTableCell`，每列一个 cell，`onRowPressed/onEditRequested/onRowContextRequested` 统一转发到页面函数。
 - **正确**：照官方唯一可用范本 `sp-执行脚本\ui\main.qml`（embeddedControl 勾选/下拉 + editorComponent 双击 + AutomaticCell 封装）改；不要自己发明"直接把控件塞进 cell"的写法。
 - 附：单击文件夹行想折叠/展开，用延迟 Timer（~320ms）区分单击与双击；双击通道与 onRowPressed 时间戳双通道共存时用 `doubleConsumed` 标志+600ms 复位防重复 toggle。
+- **v1.5 定论**：不再用自研折叠折叠树（depthMode 固定 `tree`），表格封装为 `GDriveFileTable.qml`（基于 `AppTableView`+`AppTableRowPointer` 整行单选 + `onRowDoubleClicked` 双击行触发 `rowActivated` + 勾选框 `indicatorOnly` 仅显示），双击文件夹→openFolder、双击文件→startDownload、右键→contextActionsProvider。官方 PluginDataTable 仅存在于 sp-网盘管理 旧版参考，本插件最终迭代采用 AppTableView 范本。
 
 ---
 
@@ -105,7 +106,7 @@
 1. ☐ 读本手册（铁律 R-1~R-20 过一遍）
 2. ☐ 读《开发操作手册》确认验收全过
 3. ☐ `git status` 干净、无杂散文件
-4. ☐ 版本是否被要求保持（当前 v1.4，不升）
+4. ☐ 版本是否被要求保持/升版（当前 v1.5，用户已同意升版）
 5. ☐ 打包 --output 全新目录
 6. ☐ 上传后一定做远程哈希验证
 7. ☐ lists.yaml 写**小写**哈希后再 push；不重打包

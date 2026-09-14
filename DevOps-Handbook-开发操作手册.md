@@ -196,13 +196,12 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. `parse_size_from_content_range`：解析 `bytes 0-0/N` → N；`format_size` 已有格式化。
   5. 单层 `list_folder` 全探；`_collect_tree` 每子文件夹 limit=50。
 - 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
-- 状态：**已完成并发布（2026-09 第 8 次发布，双击/右键动作加诊断日志）**。
-  - 重写点：弃用 AppTableView/AppTableCell/勾选框/自研树逻辑，改用 PluginDataTable（参考 sp-网盘管理）——`onRowActivated` 双击进目录/下载文件、`selectedItems()` 选中下载、`contextActionsProvider` 右键菜单；删除全部自研 tap 检测与折叠展开定时器。第 8 次在 onRowActivated/handleContextAction/startDownload 增加 spPlugin.log 诊断输出，用于定位远程机双击未触发问题（若日志无"双击/激活行"= 旧包未生效）。
-  - 新包 `sp-gdrive-downloader-v1.4.pkg`，**sha256=`ad0ddffcbefc1ba32571992cfbe1e7839e9d19f281ff684a29631b4065cc5b19`**（24270B，source_files=10）。
-  - Release 384015546 沿用；**删旧 asset 554010280，新 asset ID `554629216`**。
-  - 远程 HASH_MATCH 通过；lists.yaml 写 ad0ddff（小写）推送 `7f5668f`；raw 已确认。
-  - PR #3 分支同步 head=`fcfd6fd`，待上游合并；ui/main.qml CHECKSUMS→35E50A9F…、worker/main.py→310D4904…。
-  - ⚠️ PluginDataTable 交互（单击选中/双击进目录/右键菜单）需在远程 SP 安装最新包实测确认；如双击后 diagnostic 无"双击/激活行"日志，则远程拉取的是旧 catalog 包。
+- 状态：**已完成并发布（2026-09 v1.5 升版发布）**。
+  - v1.5 内容（用户指定升版以强制远程覆盖旧包）：目录内容磁盘缓存(sqlite 24h TTL)；树形解析进度(treeParsing/treeProgress/parsedFolders)；修改日期列(modifiedDisplay)；新增 `ui/GDriveFileTable.qml` 整行交互组件——整行单选(高亮)+勾选框仅显示(单击勾选)、双击行(`AppTableRowPointer` `onRowDoubleClicked` 触发 `rowActivated`，文件夹→openFolder、文件→startDownload)、右键菜单(contextActionsProvider)、表头排序(toggleSort)；v1.4 的第 8 次诊断日志(双击/激活行、右键动作、开始下载)继续保留。
+  - 新包 `sp-gdrive-downloader-v1.5.pkg`，**sha256=`3e4c73397a43e94fb2cce343eff3e03b2dfa2bef51161ffd89f8bb9e78037980`**（83022B，source_files=13，新增 GDriveFileTable.qml + .sp-package-ignore 排除 cache/）。
+  - 新建 GitHub Release **v1.5** id=`388129300`，新 asset id=`562469028`；远程 HASH_MATCH 通过；main 推送 `6db3d89`。
+  - PR #4（head=`859655a`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
+  - ⚠️ 需远程 SP 实测：双击文件夹进入、双击文件下载、批量勾选下载、缓存复用、树形进度显示。
 
 ---
 
