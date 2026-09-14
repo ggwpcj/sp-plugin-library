@@ -1,6 +1,6 @@
 - name: SP-谷歌网盘下载
-  version: '1.4'
-  package: https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.4/sp-gdrive-downloader-v1.4.pkg
-  sha256: ad0ddffcbefc1ba32571992cfbe1e7839e9d19f281ff684a29631b4065cc5b19
+  version: '1.5'
+  package: https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.5/sp-gdrive-downloader-v1.5.pkg
+  sha256: 3e4c73397a43e94fb2cce343eff3e03b2dfa2bef51161ffd89f8bb9e78037980
   author: ggwpcj
-  introduction: 谷歌网盘(Google Drive)文件下载插件：解析性能大幅优化，文件夹分页拉取+直链构造，多层级大目录并行解析(并发限流)，单文件夹失败自动降级不中断，上千文件秒级解析；解析列表真实显示文件大小；检索深度(全部解析/当前深度)，目录存储(原始层级/仅使用父级/当前目录)，表格采用官方 PluginDataTable 交互——单击整行选中(高亮)、双击文件夹进入子目录、双击文件直接下载、右键菜单支持打开/下载/刷新/回根目录，点"开始下载"批量下载选中文件；双击/右键动作写入 SP diagnostic 日志便于排查；线路默认二级代理并支持宿主核心内直连。适用 Windows/Linux/Mac。
+  introduction: 谷歌网盘(Google Drive)文件下载插件：解析性能大幅优化，文件夹分页拉取+直链构造；新增目录内容缓存(磁盘 sqlite 24h TTL)与树形解析进度显示，多层级大目录并行解析(并发限流)，单文件夹失败自动降级不中断；解析列表真实显示文件大小与修改日期；表格采用整行单选+单击勾选框、双击文件夹进入子目录/双击文件直接下载、右键菜单、表头排序，点"开始下载"批量下载选中文件；双击/右键动作写入 SP diagnostic 日志便于排查；线路默认二级代理并支持宿主核心内直连。适用 Windows/Linux/Mac。

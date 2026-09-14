@@ -90,7 +90,7 @@ for f in ['METADATA.yaml','ui/main.qml','worker/main.py','worker/gdrive.py']:
     h=hashlib.file_digest(open(os.path.join(base, f.replace('/','\\')),'rb'),'sha256').hexdigest().upper(); print(f, h)"
 ```
 - 已改文件更新 `CHECKSUMS.yaml`；未改保留原哈希。
-- **注意**：源码目录 `谷歌网盘下载\` 内不得有杂散文件（临时脚本/旧 md），否则 source_files 不符预期。
+- **注意**：源码目录内的 `cache/` 是运行数据，可能含用户访问过的目录信息。保留 `.gitignore` 和 `.sp-package-ignore`，提交前确认 Git 未跟踪 `cache/`，打包后确认归档不含 `cache/`；临时脚本和凭据同样不得入包。
 
 ### 步骤 3：确认 lists.yaml 为待发布版本内容
 编辑 `E:\yuanma\gugechajian-0905\谷歌网盘下载\lists.yaml`：
@@ -116,7 +116,7 @@ python "E:\yuanma\gugechajian-0905\sp-plugin-packager\package_plugin.py" `
 ```
 - `--output` 每次用**全新不存在的目录**（不存在否则 FileExistsError）。
 - 记录输出 JSON：`file`、`sha256`、`bytes`、`source_files`。
-- `source_files`：**7**（6 个发布文件 + 1）。**2026-09 起用户要求三个手册（DevOps-Handbook / Deploy-Handbook / Iron-Rules）也放源码目录 → source_files 基线=10**。每次打包以 `package-report.json` 实际输出的 `source_files` 为准记录，不做硬断言；但上传前必须确认包内多出的只有 3 个手册 md，别无杂散文件。
+- `source_files` 以 `package-report.json` 的实际清单为准，不沿用旧版 7/10 的固定数量。三个手册和 `.sp-package-ignore` 是预期文件；逐项核对包内没有 `cache/`、凭据、临时测试文件或下载产物。
 - verification 应含 `manifest, python-syntax, archive-round-trip, all-file-hashes`。
 
 ### 步骤 5：上传/替换 GitHub Release asset
@@ -179,8 +179,9 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 ## 四、部署验收清单（每次全过）
 
 - [ ] 代码已 py_compile/qmlcheck 通过；CHECKSUMS.yaml 已同步
+- [ ] 实际 SP 中验证长目录路径可滚轮横移、点击各级目录有效、到边界后外层页面仍可滚动
 - [ ] lists.yaml 为待发布版本内容（哈希占位已预留）
-- [ ] pkg 已打包：source_files 符合预期（7 或 10），verification 全过
+- [ ] pkg 已打包：逐项核对文件清单不含 `cache/` 等运行数据，verification 全过
 - [ ] Release/asset 上传或替换完成（记录新 asset id）
 - [ ] 远程下载哈希 == 本地 == 期望（HASH_MATCH）
 - [ ] 源码已 push；token remote 已还原

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import unquote
 
@@ -151,11 +152,41 @@ _SIZE_DIV_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+_LAST_MODIFIED_RE = re.compile(
+    r'<div class="flip-entry-last-modified"[^>]*>(.*?)</div>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+_MONTH_DAY_ZH_RE = re.compile(r"^(\d{1,2})月(\d{1,2})日$")
+_MONTH_DAY_EN_RE = re.compile(
+    r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})$",
+    re.IGNORECASE,
+)
+_EN_MONTHS = {name.lower(): index for index, name in enumerate(
+    ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1
+)}
+
 _FOLDER_HREF_RE = re.compile(r"drive\.google\.com/drive/folders/([-\w]+)")
 _FILE_HREF_RE = re.compile(r"drive\.google\.com/file/d/([-\w]+)")
 _LINK_ID_RE = re.compile(r"[?&]id=([-\w]+)")
 
 _SIZE_UNITS = {"K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
+
+
+def display_modified_date(value: str, reference_year: int) -> str:
+    """Expand Drive's yearless current-year display using its response year."""
+    text = str(value or "").strip()
+    chinese = _MONTH_DAY_ZH_RE.fullmatch(text)
+    english = _MONTH_DAY_EN_RE.fullmatch(text) if not chinese else None
+    if not chinese and not english:
+        return text
+    month = int(chinese.group(1)) if chinese else _EN_MONTHS[english.group(1).lower()]
+    day = int(chinese.group(2) if chinese else english.group(2))
+    try:
+        date(reference_year, month, day)
+    except ValueError:
+        return text
+    return f"{reference_year}/{month}/{day}"
 
 
 def parse_size_text(text: str) -> int:
@@ -182,7 +213,7 @@ def _entry_blocks(body: str) -> List[Tuple[str, str]]:
     return blocks
 
 
-def parse_folder_page(body: str) -> List[Dict[str, object]]:
+def parse_folder_page(body: str, reference_year: int = 0) -> List[Dict[str, object]]:
     folder_name = ""
     title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
     if title_match:
@@ -203,6 +234,13 @@ def parse_folder_page(body: str) -> List[Dict[str, object]]:
         if size_match:
             size_text = html.unescape(size_match.group(1)).strip()
         size_bytes = parse_size_text(size_text)
+        modified_match = _LAST_MODIFIED_RE.search(block)
+        modified_text = (
+            html.unescape(re.sub(r"<[^>]+>", "", modified_match.group(1))).strip()
+            if modified_match else ""
+        )
+        if reference_year:
+            modified_text = display_modified_date(modified_text, reference_year)
 
         folder_match = _FOLDER_HREF_RE.search(href_match.group(1))
         file_match = _FILE_HREF_RE.search(href_match.group(1))
@@ -213,6 +251,7 @@ def parse_folder_page(body: str) -> List[Dict[str, object]]:
                 "type": "folder",
                 "size": size_text,
                 "sizeBytes": size_bytes,
+                "modifiedDisplay": modified_text,
             })
         elif file_match:
             items.append({
@@ -221,6 +260,7 @@ def parse_folder_page(body: str) -> List[Dict[str, object]]:
                 "type": "file",
                 "size": size_text,
                 "sizeBytes": size_bytes,
+                "modifiedDisplay": modified_text,
             })
 
     return items
