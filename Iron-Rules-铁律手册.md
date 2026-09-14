@@ -21,7 +21,7 @@
 | R-11 | **改动必须先在本地验收（py_compile/qmlcheck/单测）再提交** | 跳过验收的发布 = 无效发布或破坏其他源码。 |
 | R-12 | **改完同步更新三个手册** | 正确步骤补进开发手册；新教训补进铁律手册。保证"步骤不遗漏、教训全记录"。 |
 | R-13 | **发布后必须远程下载验证哈希（HASH_MATCH）** | 不验证=可能已损坏/上传错文件。 |
-| R-14 | **不要修改 spworker2026/plugins 仓库** | 无写权限，只能通过 PR #3 合并；官方目录未合并前 SP 默认源看不到新版。 |
+| R-14 | **不要修改 spworker2026/plugins 仓库** | 无写权限，只能通过 PR 合并（当前 PR #4）；官方目录未合并前 SP 默认源看不到新版。 |
 | R-15 | **PowerShell 内联 python -c 写正则会报 cmdlet 错误** | 校验逻辑写成独立 .py 文件再执行（qmlcheck2.py 模式）。 |
 | R-16 | **QML append/push 块键必须齐全** | 缺键（rowId name size type downloadUrl checked depth hasChildren expanded entry/path）→ 行不渲染/崩溃。 |
 | R-17 | **mock 测试页必须用真实 HTML 结构**（`flip-entry` id、`file/d/`、`drive/folders/`） | 结构不对 → 正则不匹配 → 测试假通过/假失败。 |
@@ -29,6 +29,7 @@
 | R-19 | **同一文件夹 id 只解析一次（循环目录守卫）** | Drive 目录理论上无环，但自指/软链/同名会死循环爆请求。用 node_by_id 去重。 |
 | R-20 | **改代码前必须先读三个手册（开发/部署/铁律）** | 防止凭记忆破坏正常源码。 |
 | R-21 | **超宽路径的滚轮只由路径视口接管** | `Flickable.HorizontalFlick` 仅保证拖拽，不会自动把竖向鼠标滚轮变成横向滚动；只在内容可移动时消费滚轮，边界透传，不能覆盖目录点击和固定图标按钮。 |
+| R-22 | **新打包器契约（维护者更新后）**：`METADATA.yaml` 必须含 `最低SP版本`（API1→`3.0-beta-1`、API2→`3.0-beta-2`、API3→`3.0-beta-3`，API1 不得填晚于 `3.0-beta-1`）；全部 `spPlugin.*`/QML 组件必须在 API 合约登记（缺失报 `Missing manifest field`/`unregistered spPlugin capability`）；在线 lists.yaml 条目必须含 `api_version`+`minimum_sp_version` 且与包内一致；打包禁用 `cache/`（sqlite 产物曾混入 v1.5-r1）。 |
 
 ---
 
@@ -99,11 +100,16 @@
 - 附：单击文件夹行想折叠/展开，用延迟 Timer（~320ms）区分单击与双击；双击通道与 onRowPressed 时间戳双通道共存时用 `doubleConsumed` 标志+600ms 复位防重复 toggle。
 - **v1.5 定论**：不再用自研折叠折叠树（depthMode 固定 `tree`），表格封装为 `GDriveFileTable.qml`（基于 `AppTableView`+`AppTableRowPointer` 整行单选 + `onRowDoubleClicked` 双击行触发 `rowActivated` + 勾选框 `indicatorOnly` 仅显示），双击文件夹→openFolder、双击文件→startDownload、右键→contextActionsProvider。官方 PluginDataTable 仅存在于 sp-网盘管理 旧版参考，本插件最终迭代采用 AppTableView 范本。
 
+### F-12 维护者更新打包器后 v1.5 必经重发（第 5 轮）
+- **现象**：发布 v1.5-r1 后维护者换了独立打包器，新增 `最低SP版本` 必填、`plugin-api-capabilities` 扫描校验、在线目录 `api_version`+`minimum_sp_version` 契约；试跑新打包器报 `Missing manifest field: 最低SP版本`。且 r1 意外打包了运行时 `cache/folders.sqlite3`（237KB）。
+- **正确**：METADATA 补 `最低SP版本: 3.0-beta-1`（API1 基线）；CHECKSUMS 同步新哈希；新打包器重打（5 项校验含 plugin-api-capabilities）；删旧 asset→传新→HASH_MATCH→更新 main/fork lists.yaml（加两键+新 sha）→force 更新 PR#4。清单比对确认 cache 已排除。
+- **教训**：R-22。契约更新属于 R-1"禁止重打包"的合法例外，但必须完整走发布链重发而非只改文件。
+
 ---
 
 ## 二、发布前 3 分钟自检清单
 
-1. ☐ 读本手册（铁律 R-1~R-20 过一遍）
+1. ☐ 读本手册（铁律 R-1~R-22 过一遍）
 2. ☐ 读《开发操作手册》确认验收全过
 3. ☐ `git status` 干净、无杂散文件
 4. ☐ 版本是否被要求保持/升版（当前 v1.5，用户已同意升版）

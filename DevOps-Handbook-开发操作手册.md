@@ -198,9 +198,10 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
 - 实测（真网）：gdown.pptx=34667B→33.9 KB；spam*.txt=5B；单元测试 limit/文件夹过滤全过。
 - 状态：**已完成并发布（2026-09 v1.5 升版发布）**。
   - v1.5 内容（用户指定升版以强制远程覆盖旧包）：目录内容磁盘缓存(sqlite 24h TTL)；树形解析进度(treeParsing/treeProgress/parsedFolders)；修改日期列(modifiedDisplay)；新增 `ui/GDriveFileTable.qml` 整行交互组件——整行单选(高亮)+勾选框仅显示(单击勾选)、双击行(`AppTableRowPointer` `onRowDoubleClicked` 触发 `rowActivated`，文件夹→openFolder、文件→startDownload)、右键菜单(contextActionsProvider)、表头排序(toggleSort)；v1.4 的第 8 次诊断日志(双击/激活行、右键动作、开始下载)继续保留。
-  - 新包 `sp-gdrive-downloader-v1.5.pkg`，**sha256=`3e4c73397a43e94fb2cce343eff3e03b2dfa2bef51161ffd89f8bb9e78037980`**（83022B，source_files=13，新增 GDriveFileTable.qml + .sp-package-ignore 排除 cache/）。
-  - 新建 GitHub Release **v1.5** id=`388129300`，新 asset id=`562469028`；远程 HASH_MATCH 通过；main 推送 `6db3d89`。
-  - PR #4（head=`859655a`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
+  - 新包 `sp-gdrive-downloader-v1.5.pkg`，**sha256=`d0624f6326bd79e4a2476c3f46f55798aaaaecb46a4869c49352909979565c37`**（33758B，source_files=12，新增 GDriveFileTable.qml + .sp-package-ignore 排除 cache/）。
+  - **重发原因**：维护者更新独立打包器后新增必填与校验——`最低SP版本` 必填；`plugin-api-capabilities` 校验 QML 中所有 spPlugin.* 与 QML 组件必须登记（当前全部为 API 1，声明 `插件API版本: 1` 正确）；在线目录条目需 `api_version`+`minimum_sp_version`。METADATA 补 `最低SP版本: 3.0-beta-1`；v1.5-r1 意外打包入运行时产物 `cache/folders.sqlite3`（237KB），重发 r2 已排除。旧 sha `3e4c7339` 作废，旧 asset 562469028 已删。
+  - 新建 GitHub Release **v1.5** id=`388129300`，当前 asset id=`563356585`；远程 HASH_MATCH 通过；main 推送 `20b46fb`。
+  - PR #4（head=`bf5c9c7`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
   - ⚠️ 需远程 SP 实测：双击文件夹进入、双击文件下载、批量勾选下载、缓存复用、树形进度显示。
 
 ---

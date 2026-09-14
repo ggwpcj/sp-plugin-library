@@ -35,15 +35,15 @@ SAULT : source_files=10（含 3 手册）
 ```
 
 ```
-发布轮次  : v1.5 升版发布（用户指定升版强制远程覆盖）✅ 2026-09 已完成
+发布轮次  : v1.5 重发（补最低SP版本+目录契约字段；排除cache产物）✅ 2026-09 已完成
 版本      : v1.5
 包名      : sp-gdrive-downloader-v1.5.pkg
-sha256    : 3e4c73397a43e94fb2cce343eff3e03b2dfa2bef51161ffd89f8bb9e78037980 ✅
-打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.5-r1
-Release ID: 388129300（新 release v1.5，非沿用 384015546）
-新asset ID: 562469028 ✅
-SAULT : source_files=13（含 3 手册 + GDriveFileTable.qml + .sp-package-ignore）
-推送    : 源码 6db3d89；PR #4 分支 859655a（open，待上游合并）
+sha256    : d0624f6326bd79e4a2476c3f46f55798aaaaecb46a4869c49352909979565c37 ✅
+打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.5-r2（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: 388129300
+新asset ID: 563356585 ✅（562469028 已删；旧sha 3e4c7339 作废）
+SAULT : source_files=12（含 3 手册 + GDriveFileTable.qml + .sp-package-ignore；不含 cache/sqlite 产物）
+推送    : 源码 20b46fb；PR #4 分支 bf5c9c7（open，待上游合并）
 ```
 
 ---
@@ -116,7 +116,8 @@ python "E:\yuanma\gugechajian-0905\sp-plugin-packager\package_plugin.py" `
 - `--output` 每次用**全新不存在的目录**（不存在否则 FileExistsError）。
 - 记录输出 JSON：`file`、`sha256`、`bytes`、`source_files`。
 - `source_files` 以 `package-report.json` 的实际清单为准，不沿用旧版 7/10 的固定数量。三个手册和 `.sp-package-ignore` 是预期文件；逐项核对包内没有 `cache/`、凭据、临时测试文件或下载产物。
-- verification 应含 `manifest, python-syntax, archive-round-trip, all-file-hashes`。
+- verification 应含 `manifest, plugin-api-capabilities, python-syntax, archive-round-trip, all-file-hashes`（新打包器）。
+- **新打包器（2026-09 维护者更新后）必查**：打包前确认 `METADATA.yaml` 含 `最低SP版本`（API1→`3.0-beta-1`、API2→`3.0-beta-2`、API3→`3.0-beta-3`，且 API1 不得填晚于 `3.0-beta-1` 的值）；所有 `spPlugin.*` 与 QML 组件必须在 API 合约已登记能力内，否则打包直接失败 `Missing manifest field`/`unregistered spPlugin capability`。`source_files` 以 `package-report.json` 为准；逐项核对包内没有 `cache/`、凭据、临时测试文件或下载产物（`cache/folders.sqlite3` 曾混入 v1.5-r1，由 `.sp-package-ignore` 排除）。`--release-url` 必须是固定版本 HTTPS 目录、不带 latest/凭据/查询参数。
 
 ### 步骤 5：上传/替换 GitHub Release asset
 ```powershell
@@ -125,8 +126,8 @@ $headers = @{ Authorization = "token $token"; Accept = "application/vnd.github+j
 # 沿用版本 → 先删旧 asset
 Invoke-RestMethod -Method Delete -Uri "https://api.github.com/repos/ggwpcj/sp-plugin-library/releases/assets/<旧ASSET_ID>" -Headers $headers
 # 上传新包
-$uploadUrl = "https://uploads.github.com/repos/ggwpcj/sp-plugin-library/releases/<RELEASE_ID>/assets?name=sp-gdrive-downloader-v1.4.pkg"
-$data = [System.IO.File]::ReadAllBytes("E:\yuanma\gugechajian-0905\release-v1.4-rX-rY\sp-gdrive-downloader-v1.4.pkg")
+$uploadUrl = "https://uploads.github.com/repos/ggwpcj/sp-plugin-library/releases/<RELEASE_ID>/assets?name=sp-gdrive-downloader-v1.5.pkg"
+$data = [System.IO.File]::ReadAllBytes("E:\yuanma\gugechajian-0905\谷歌网盘下载\..\release-vX.Y-rZ\sp-gdrive-downloader-v1.5.pkg")
 $resp = Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -ContentType "application/octet-stream" -Body $data
 # 记录 $resp.id（新 asset id）
 ```
@@ -134,9 +135,9 @@ $resp = Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -Conten
 
 ### 步骤 6：远程下载验证哈希（必做，HASH_MATCH）
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.4/sp-gdrive-downloader-v1.4.pkg" -OutFile "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.4.pkg"
-$remote = (Get-FileHash -LiteralPath "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.4.pkg" -Algorithm SHA256).Hash
-$local  = (Get-FileHash -LiteralPath "E:\yuanma\gugechajian-0905\release-v1.4-rX-rY\sp-gdrive-downloader-v1.4.pkg" -Algorithm SHA256).Hash
+Invoke-WebRequest -Uri "https://github.com/ggwpcj/sp-plugin-library/releases/download/vX.Y/sp-gdrive-downloader-v1.5.pkg" -OutFile "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.5.pkg"
+$remote = (Get-FileHash -LiteralPath "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.5.pkg" -Algorithm SHA256).Hash
+$local  = (Get-FileHash -LiteralPath "<打包输出目录>\sp-gdrive-downloader-v1.5.pkg" -Algorithm SHA256).Hash
 # 要求: $remote -eq $local -eq 步骤4 的 sha256
 ```
 
