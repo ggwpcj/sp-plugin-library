@@ -4,7 +4,7 @@
 > **每次动代码前必须先读本手册**，按「三、完整开发步骤」逐步执行；严禁凭记忆/猜测修改，以免破坏其他正常源码。
 > 部署（打包/上传/发版）见《上传部署手册 Deploy-Handbook.md》；失败教训与铁律见《铁律手册 Iron-Rules.md》。
 
-**版本基线**：当前插件版本 v1.4（**不许擅自升版本**，详见铁律手册 R-2）。
+**版本基线**：当前插件版本 v1.6（用户已同意自 v1.5 升版，用于强制远程覆盖旧包，详见铁律手册 R-2）。
 
 ---
 
@@ -203,6 +203,24 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - 新建 GitHub Release **v1.5** id=`388129300`，当前 asset id=`563356585`；远程 HASH_MATCH 通过；main 推送 `20b46fb`。
   - PR #4（head=`bf5c9c7`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
   - ⚠️ 需远程 SP 实测：双击文件夹进入、双击文件下载、批量勾选下载、缓存复用、树形进度显示。
+
+### v1.6（第 1 轮）—— 勾选文件夹一键递归下载整个文件夹
+- 症状（用户报障）：勾选文件夹后点"开始下载"**没有任何反应**，必须双击进到文件夹里逐个勾选文件才能下载；文件夹内文件多时操作繁琐。
+- 根因（代码定位 ui/main.qml）：`itemsWithUrl()` 在收集下载目标时用 `isFolderRow(row)` 把**所有文件夹行过滤掉**，只保留带 `downloadUrl` 的文件行 → 勾选文件夹 = 空目标 → 底部"开始下载"无动作。文件夹行的 check 勾选本身是好的（`table.selectedItems()` 能选中文件夹行），只是下载阶段被丢弃。
+- 修改（ui/main.qml）：
+  1. 新增 `collectFolderFiles(folderRow)`：以勾选文件夹为根做**迭代式 DFS（手工 stack，非递归）**遍历其后代树：
+     - 文件条目（`type==="file"` 且带 `downloadUrl`）全部收集；用 `seenFiles` 按 id 去重，无 `downloadUrl` 的跳过。
+     - 文件夹条目用 `seenFolders` 按 id 去重防循环目录；`_reused` 标记的直接跳过（内容已在其它分支展开）。
+     - 子文件夹解析来源优先 `row.children`（树模式带嵌套 children），缺失时回退 `folderCache[folderId].items`（导航过/缓存过的目录）。
+     - `_loaded !== true` 且 `children` 为空 → 判定"未解析子目录"，`unresolved++` 不计入失败，仅提示。
+  2. 重写 `downloadSelected()`：对每个选中行——文件夹 → 递归收集全部后代文件；文件 → 直接加入；最后统一排队下载。若存在未解析子目录，Toast 提示"另有 N 个子目录未解析，需先进入解析"。
+  3. 右键菜单"下载选中项"改为同时支持文件夹行（原仅文件行出现）。
+  4. 新增诊断日志：勾选文件夹下载 展开=名称 id=… 文件数=…；开始下载选中项：文件 N 个。
+- 验收：py_compile×2 通过；qmlcheck2 括号/块键/Component.onCompleted 全过；9 项逻辑单测（多层完整树、截断子目录、循环守卫、_reused 跳过、cache 回退、空目录、顶层截断、文件去重、无 URL 跳过）全部 PASS。
+- 状态：**已发布（2026-09 v1.6 升版发布）**。
+  - 新包 `sp-gdrive-downloader-v1.6.pkg`，**sha256=`<部署后回填>`**（见部署手册快照）。
+  - BUILD + HASH_MATCH + lists.yaml + PR 详情见《上传部署手册》发布快照。
+  - ⚠️ 需远程 SP 实测：勾选文件夹 →"开始下载"应整文件夹（含多级子目录）全部加入队列。
 
 ---
 

@@ -534,24 +534,101 @@ PluginWorkspacePage {
         root.queuedCount++
     }
 
-    function itemsWithUrl() {
-        var selected = table.selectedItems()
-        if (!selected || selected.length === 0)
-            return []
-        return selected.filter(function(row) {
-            return root.isFolderRow(row) ? false : (row && row.downloadUrl && String(row.downloadUrl).length > 0)
-        })
+    function collectFolderFiles(folderRow) {
+        var files = []
+        var unresolved = 0
+        var seenFolders = ({})
+        var seenFiles = ({})
+        var stack = []
+        var seedId = root.folderIdFor(folderRow)
+        if (seedId)
+            seenFolders[seedId] = true
+        var seed = null
+        if (folderRow.children !== undefined && folderRow.children !== null)
+            seed = folderRow.children
+        if (!seed && root.folderCache[seedId])
+            seed = root.folderCache[seedId].items
+        if (seed && seed.length === 0 && folderRow._loaded !== true)
+            seed = null
+        if (!seed) {
+            root.spPlugin.log("勾选文件夹下载：无已解析子项 → " + String(folderRow.name || seedId))
+            return {"files": [], "unresolved": 1}
+        }
+        stack.push(seed)
+        while (stack.length > 0) {
+            var items = stack.pop()
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i]
+                if (String(item.type || "") === "file") {
+                    if (!item.downloadUrl || String(item.downloadUrl).length === 0)
+                        continue
+                    var fileId = String(item.id || "")
+                    if (fileId && seenFiles[fileId])
+                        continue
+                    if (fileId)
+                        seenFiles[fileId] = true
+                    files.push(item)
+                } else if (root.isFolderRow(item)) {
+                    var folderId = String(item.id || item.folderId || "")
+                    if (folderId && seenFolders[folderId])
+                        continue
+                    if (folderId)
+                        seenFolders[folderId] = true
+                    if (item._reused)
+                        continue
+                    var children = null
+                    if (item.children !== undefined && item.children !== null)
+                        children = item.children
+                    if (!children && root.folderCache[folderId])
+                        children = root.folderCache[folderId].items
+                    if (!children || (children.length === 0 && item._loaded !== true)) {
+                        unresolved++
+                    } else {
+                        stack.push(children)
+                    }
+                }
+            }
+        }
+        root.spPlugin.log("勾选文件夹下载 展开=" + String(folderRow.name || seedId)
+                          + " id=" + seedId + " 文件数=" + files.length
+                          + (unresolved > 0 ? " 未解析子目录=" + unresolved : ""))
+        return {"files": files, "unresolved": unresolved}
     }
 
     function downloadSelected() {
-        var targets = root.itemsWithUrl()
-        if (targets.length === 0) {
-            root.spPlugin.showToast("请先选中要下载的文件", "warning", "gdrive-no-selection")
+        var selected = table.selectedItems()
+        if (!selected || selected.length === 0) {
+            root.spPlugin.showToast("请先勾选要下载的文件或文件夹", "warning", "gdrive-no-selection")
             return
         }
-        for (var i = 0; i < targets.length; i++)
-            root.startDownload(targets[i])
-        root.spPlugin.showToast("已加入下载队列 " + targets.length + " 个任务", "success", "gdrive-download-queued")
+        var targets = []
+        var unresolved = 0
+        for (var i = 0; i < selected.length; i++) {
+            var row = selected[i]
+            if (root.isFolderRow(row)) {
+                var expanded = root.collectFolderFiles(row)
+                targets = targets.concat(expanded.files)
+                unresolved += expanded.unresolved
+            } else if (row && row.downloadUrl && String(row.downloadUrl).length > 0) {
+                targets.push(row)
+            }
+        }
+        if (targets.length === 0) {
+            root.spPlugin.showToast(unresolved > 0
+                ? "所选文件夹尚未解析，请先在“全部解析”模式解析后再下载"
+                : "请先选中要下载的文件",
+                "warning", "gdrive-no-selection")
+            return
+        }
+        root.spPlugin.log("开始下载选中项：文件 " + targets.length + " 个"
+                          + (unresolved > 0 ? "；未解析子目录 " + unresolved + " 个" : ""))
+        for (var j = 0; j < targets.length; j++)
+            root.startDownload(targets[j])
+        var message = "已加入下载队列 " + targets.length + " 个任务"
+        if (unresolved > 0)
+            message += "；另有 " + unresolved + " 个子目录未解析，需先进入解析"
+        root.spPlugin.showToast(message, unresolved > 0 ? "warning" : "success",
+                                "gdrive-download-queued")
     }
 
     function contextActions(row, selectedRows) {
@@ -559,7 +636,7 @@ PluginWorkspacePage {
         if (row && row.type === "folder")
             actions.push({"text": "打开", "action": "open"})
         if (selectedRows && selectedRows.some(function(item) {
-                return item && item.type === "file"
+                return item && (item.type === "file" || item.type === "folder")
             }))
             actions.push({"text": "下载选中项", "action": "download-selected"})
         if (root.pathStack.length > 0 && selectedRows && selectedRows.some(function(item) {

@@ -46,6 +46,18 @@ SAULT : source_files=12（含 3 手册 + GDriveFileTable.qml + .sp-package-ignor
 推送    : 源码 20b46fb；PR #4 分支 bf5c9c7（open，待上游合并）
 ```
 
+```
+发布轮次  : v1.6 第 1 轮（勾选文件夹一键递归下载整个文件夹）✅ 2026-09 已完成
+版本      : v1.6
+包名      : sp-gdrive-downloader-v1.6.pkg
+sha256    : <部署后回填>
+打包输出  : <部署后回填>（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: <部署后回填>
+新asset ID: <部署后回填>
+SAULT : source_files=<以 package-report.json 为准>
+推送    : 源码 <提交号>；PR #4 分支 <head>（open，待上游合并）
+```
+
 ---
 
 ## 一、SP 在线更新机制与校验契约（部署铁律）
@@ -70,7 +82,7 @@ SP 校验：线上 lists.yaml 的 sha256 == 实际下载的 pkg 文件哈希
 2. 7-Zip：`C:\Program Files\7-Zip\7z.exe`。
 3. Token：`E:\yuanma\gugechajian-0905\GITHUB_TOKEN.txt`（敏感，仅临时 remote/API 用，推后立即还原；绝不写入任何文件/提交/包/聊天）。
 4. 源码仓库：`E:\yuanma\gugechajian-0905\谷歌网盘下载\` = `origin https://github.com/ggwpcj/sp-plugin-library.git`。
-5. 商城 PR fork：`C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork`（分支 `update-gdrive-v1.4`，对应 PR #3）。
+5. 商城 PR fork：`C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork`（分支 `update-gdrive-v1.x`，对应 PR #4）。**注意：该目录是临时工作区，若已被清理则发布前需重新 clone fork**：`git -C C:\Users\AOC\AppData\Local\Temp\opencode clone https://github.com/ggwpcj/plugins.git pluginfork`（origin 指向 fork `ggwpcj/plugins`，勿指向上游 `spworker2026/plugins`，见铁律 F-09）。
 
 ---
 
@@ -199,4 +211,4 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 - v1.2：连接池、检索深度、目录存储、表格交互、线路——官方 PR #1（open）
 - v1.4 第 1 轮：解析提速（分页+直链）——首包 df03c52d（已被替代）
 - v1.4 第 2 轮：移除链接池——上线 0b5c26，asset 549685100，PR #3 head c229e1e（open）
-- v1.4 第 3 轮：并行解析——**已发布**（sha256 `c7c01c8`，asset 551686576，PR #3 head a919000 open，待上游合并）
+- v1.5 第 1 轮：勾选文件夹一键递归下载整个文件夹——**已发布**（sha `<回填>`，asset `<回填>`，PR #4 head `<回填>` open，待上游合并）
