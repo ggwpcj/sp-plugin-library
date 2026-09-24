@@ -173,13 +173,25 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 ```
 > 顺序注意：先步骤 4 打包 → 上传 → 验证 → **最后**填哈希。填完哈希后**不再重打包**（铁律 R-1）。
 
-### 步骤 9：同步商城 PR #3 分支（fork）
+### 步骤 9：同步商城 PR #4 分支（fork）
 ```powershell
-# 工作目录 C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork，分支 update-gdrive-v1.4
-# 将本地 lists.yaml 的（version/package/sha256/introduction）同步到 fork 的 lists.yaml
-# 在 fork 内: git commit → token push 到 update-gdrive-v1.4
-# 确认 PR #3 mergeable=clean（head 更新为最新提交）
+# 工作目录 C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork，分支 update-gdrive-v1.x（PR #4）
+# 若临时目录已被清理，先重新 clone fork：git clone https://github.com/ggwpcj/plugins.git pluginfork（见 F-09）
+# 可先 rebase 到 upstream/main（避免 PR 冲突），再将本地 lists.yaml 的（version/package/sha256/introduction）同步到 fork 的 lists.yaml
+# 在 fork 内: git commit → token push 到 update-gdrive-v1.x
+# 确认 PR #4 mergeable=YES（head 更新为最新提交）
 ```
+
+### 步骤 9b：回填手册真实发布数字（必做，漏了会留占位符——见 F-14）
+在拿到 Release/asset/PR head 的**当下**立即编辑三本手册，把所有 `<部署后回填>`/`<提交号>`/`<head>` 占位符替换为真实值：
+```powershell
+# 1. Deploy-Handbook：本次发布快照框（sha256/打包输出/Release ID/新asset ID/推送/PR head）+ 版本历史 v1.x 行
+# 2. DevOps-Handbook：「六、修改记录」新条目 状态行（sha/asset id/提交号/PR head）
+# 3. Iron-Rules：R-2 当前版本号、自检清单版本/PR 引用
+git add -A; git commit -m "手册回填 vX.Y 发布数字（sha/Release/asset/PR head）"
+# token push main → 还原 remote（见步骤 7 的 remote set-url 还原）
+```
+> 铁律：占位符换成真实值必须趁数据还热时做；三本手册都回填完再宣布发布完成。
 
 ### 步骤 10：SP 端验证
 - SP 自定义清单源已指向 `https://raw.githubusercontent.com/ggwpcj/sp-plugin-library/main/lists.yaml`。
@@ -198,9 +210,9 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 - [ ] 远程下载哈希 == 本地 == 期望（HASH_MATCH）
 - [ ] 源码已 push；token remote 已还原
 - [ ] lists.yaml sha256 已写入并 push；raw 已确认
-- [ ] PR #3 分支已同步、mergeable=clean
+- [ ] PR #4 分支已同步、mergeable=YES
 - [ ] SP 自测通过
-- [ ] 手册已同步更新（DevOps 手册「六、修改记录」+ 部署快照 + 铁律）
+- [ ] 手册已同步更新（DevOps 手册「六、修改记录」+ 部署快照 + 铁律），发布数字已回填**非占位符**（步骤 9b）
 
 ---
 
