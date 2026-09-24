@@ -50,12 +50,12 @@ SAULT : source_files=12（含 3 手册 + GDriveFileTable.qml + .sp-package-ignor
 发布轮次  : v1.6 第 1 轮（勾选文件夹一键递归下载整个文件夹）✅ 2026-09 已完成
 版本      : v1.6
 包名      : sp-gdrive-downloader-v1.6.pkg
-sha256    : <部署后回填>
-打包输出  : <部署后回填>（新打包器，5项校验全过含plugin-api-capabilities）
-Release ID: <部署后回填>
-新asset ID: <部署后回填>
-SAULT : source_files=<以 package-report.json 为准>
-推送    : 源码 <提交号>；PR #4 分支 <head>（open，待上游合并）
+sha256    : f40d3defb23db9b4ce2e79300d5f10e9e3b3259919ae8fc023744130ac81a744 ✅
+打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.6-r1（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: 395527811
+新asset ID: 585613860 ✅ HASH_MATCH=YES
+SAULT : source_files=12（新打包器 package-report.json：sha f40d3def…a744，36430B）
+推送    : 源码 55eb759（功能+手册）→ 6887236（lists.yaml 落库）；PR #4 分支 310fd28（open，待上游合并）
 ```
 
 ---
@@ -211,4 +211,5 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-libra
 - v1.2：连接池、检索深度、目录存储、表格交互、线路——官方 PR #1（open）
 - v1.4 第 1 轮：解析提速（分页+直链）——首包 df03c52d（已被替代）
 - v1.4 第 2 轮：移除链接池——上线 0b5c26，asset 549685100，PR #3 head c229e1e（open）
-- v1.5 第 1 轮：勾选文件夹一键递归下载整个文件夹——**已发布**（sha `<回填>`，asset `<回填>`，PR #4 head `<回填>` open，待上游合并）
+- v1.5 第 1 轮：勾选文件夹一键递归下载整个文件夹——**已发布**（sha d0624f63，asset 563356585，PR #4 head bf5c9c7 open，待上游合并）
+- v1.6 第 1 轮：勾选文件夹一键递归下载整个文件夹（collectFolderFiles 重写，下载阶段文件夹递归展开）——**已发布**（sha f40d3def，asset 585613860，PR #4 head 310fd28 open，待上游合并）

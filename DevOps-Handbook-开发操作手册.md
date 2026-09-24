@@ -218,8 +218,9 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   4. 新增诊断日志：勾选文件夹下载 展开=名称 id=… 文件数=…；开始下载选中项：文件 N 个。
 - 验收：py_compile×2 通过；qmlcheck2 括号/块键/Component.onCompleted 全过；9 项逻辑单测（多层完整树、截断子目录、循环守卫、_reused 跳过、cache 回退、空目录、顶层截断、文件去重、无 URL 跳过）全部 PASS。
 - 状态：**已发布（2026-09 v1.6 升版发布）**。
-  - 新包 `sp-gdrive-downloader-v1.6.pkg`，**sha256=`<部署后回填>`**（见部署手册快照）。
-  - BUILD + HASH_MATCH + lists.yaml + PR 详情见《上传部署手册》发布快照。
+  - 新包 `sp-gdrive-downloader-v1.6.pkg`，**sha256=`f40d3defb23db9b4ce2e79300d5f10e9e3b3259919ae8fc023744130ac81a744`**（36430B，source_files=12，新打包器 5 项校验全过含 plugin-api-capabilities）。
+  - Release v1.6 id=`395527811`，asset id=`585613860`；远程 HASH_MATCH 通过；main 推送 `55eb759`（功能+手册）→ `6887236`（lists.yaml 落库）。
+  - PR #4 分支 update-gdrive-v1.5（head=`310fd28` v1.6 条目）待上游合并。
   - ⚠️ 需远程 SP 实测：勾选文件夹 →"开始下载"应整文件夹（含多级子目录）全部加入队列。
 
 ---
