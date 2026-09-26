@@ -85,7 +85,7 @@ SP 校验：线上 lists.yaml 的 sha256 == 实际下载的 pkg 文件哈希
 ```powershell
 python -m py_compile "E:\yuanma\gugechajian-0905\谷歌网盘下载\worker\main.py"
 python -m py_compile "E:\yuanma\gugechajian-0905\谷歌网盘下载\worker\gdrive.py"
-python "C:\Users\AOC\AppData\Local\Temp\opencode\qmlcheck2.py"
+python "C:\SPdrive-buildw\qmlcheck2.py" "E:\yuanma\gugechajian-0905\谷歌网盘下载\ui\main.qml"
 ```
 - py_compile 通过 = 语法无误。
 - qmlcheck2.py 输出：`{}` 168 168 等括号成对、append/push 块键齐全（条件行缺键会报 `missing []`）、AppFormRow/AppSelect 数量。

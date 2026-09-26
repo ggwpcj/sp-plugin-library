@@ -39,7 +39,7 @@ SAULT : source_files=10（含 3 手册）
 版本      : v1.5
 包名      : sp-gdrive-downloader-v1.5.pkg
 sha256    : d0624f6326bd79e4a2476c3f46f55798aaaaecb46a4869c49352909979565c37 ✅
-打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.5-r2（新打包器，5项校验全过含plugin-api-capabilities）
+打包输出  : C:\SPdrive-buildw\pkg-v1.5-r2（新打包器，5项校验全过含plugin-api-capabilities）
 Release ID: 388129300
 新asset ID: 563356585 ✅（562469028 已删；旧sha 3e4c7339 作废）
 SAULT : source_files=12（含 3 手册 + GDriveFileTable.qml + .sp-package-ignore；不含 cache/sqlite 产物）
@@ -51,7 +51,7 @@ SAULT : source_files=12（含 3 手册 + GDriveFileTable.qml + .sp-package-ignor
 版本      : v1.6
 包名      : sp-gdrive-downloader-v1.6.pkg
 sha256    : f40d3defb23db9b4ce2e79300d5f10e9e3b3259919ae8fc023744130ac81a744 ✅
-打包输出  : C:\Users\AOC\AppData\Local\Temp\opencode\pkg-v1.6-r1（新打包器，5项校验全过含plugin-api-capabilities）
+打包输出  : C:\SPdrive-buildw\pkg-v1.6-r1（新打包器，5项校验全过含plugin-api-capabilities）
 Release ID: 395527811
 新asset ID: 585613860 ✅ HASH_MATCH=YES
 SAULT : source_files=12（新打包器 package-report.json：sha f40d3def…a744，36430B）
@@ -82,7 +82,7 @@ SP 校验：线上 lists.yaml 的 sha256 == 实际下载的 pkg 文件哈希
 2. 7-Zip：`C:\Program Files\7-Zip\7z.exe`。
 3. Token：`E:\yuanma\gugechajian-0905\GITHUB_TOKEN.txt`（敏感，仅临时 remote/API 用，推后立即还原；绝不写入任何文件/提交/包/聊天）。
 4. 源码仓库：`E:\yuanma\gugechajian-0905\谷歌网盘下载\` = `origin https://github.com/ggwpcj/sp-plugin-library.git`。
-5. 商城 PR fork：`C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork`（分支 `update-gdrive-v1.x`，对应 PR #4）。**注意：该目录是临时工作区，若已被清理则发布前需重新 clone fork**：`git -C C:\Users\AOC\AppData\Local\Temp\opencode clone https://github.com/ggwpcj/plugins.git pluginfork`（origin 指向 fork `ggwpcj/plugins`，勿指向上游 `spworker2026/plugins`，见铁律 F-09）。
+5. 商城 PR fork：`C:\SPdrive-buildw\pluginfork`（分支 `update-gdrive-v1.x`，对应 PR #4）。**注意：pluginfork 是插件专用的编译/发布工作区（产物统一存放于 `C:\SPdrive-buildw\`），若已被清理则发布前需重新 clone fork**：`git -C C:\SPdrive-buildw clone https://github.com/ggwpcj/plugins.git pluginfork`（origin 指向 fork `ggwpcj/plugins`，勿指向上游 `spworker2026/plugins`，见铁律 F-09）。
 
 ---
 
@@ -95,7 +95,7 @@ SP 校验：线上 lists.yaml 的 sha256 == 实际下载的 pkg 文件哈希
 ```powershell
 python -m py_compile "E:\yuanma\gugechajian-0905\谷歌网盘下载\worker\main.py"
 python -m py_compile "E:\yuanma\gugechajian-0905\谷歌网盘下载\worker\gdrive.py"
-python "C:\Users\AOC\AppData\Local\Temp\opencode\qmlcheck2.py"
+python "C:\SPdrive-buildw\qmlcheck2.py" "E:\yuanma\gugechajian-0905\谷歌网盘下载\ui\main.qml"
 python -c "import hashlib, os; base=r'E:\yuanma\gugechajian-0905\谷歌网盘下载';
 for f in ['METADATA.yaml','ui/main.qml','worker/main.py','worker/gdrive.py']:
     h=hashlib.file_digest(open(os.path.join(base, f.replace('/','\\')),'rb'),'sha256').hexdigest().upper(); print(f, h)"
@@ -119,8 +119,8 @@ for f in ['METADATA.yaml','ui/main.qml','worker/main.py','worker/gdrive.py']:
 ```powershell
 python "E:\yuanma\gugechajian-0905\sp-plugin-packager\package_plugin.py" `
   --source "E:\yuanma\gugechajian-0905\谷歌网盘下载" `
-  --output "E:\yuanma\gugechajian-0905\release-v1.4-rX-rY" `
-  --release-url "https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.4" `
+  --output "C:\SPdrive-buildw\pkg-vX.Y-rN" `
+  --release-url "https://github.com/ggwpcj/sp-plugin-library/releases/download/vX.Y" `
   --author "ggwpcj" `
   --introduction "<本次功能介绍>" `
   --seven-zip "C:\Program Files\7-Zip\7z.exe"
@@ -147,8 +147,8 @@ $resp = Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers $headers -Conten
 
 ### 步骤 6：远程下载验证哈希（必做，HASH_MATCH）
 ```powershell
-Invoke-WebRequest -Uri "https://github.com/ggwpcj/sp-plugin-library/releases/download/vX.Y/sp-gdrive-downloader-v1.5.pkg" -OutFile "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.5.pkg"
-$remote = (Get-FileHash -LiteralPath "C:\Users\AOC\AppData\Local\Temp\opencode\remote-v1.5.pkg" -Algorithm SHA256).Hash
+Invoke-WebRequest -Uri "https://github.com/ggwpcj/sp-plugin-library/releases/download/vX.Y/sp-gdrive-downloader-v1.5.pkg" -OutFile "C:\SPdrive-buildw\remote-v1.5.pkg"
+$remote = (Get-FileHash -LiteralPath "C:\SPdrive-buildw\remote-v1.5.pkg" -Algorithm SHA256).Hash
 $local  = (Get-FileHash -LiteralPath "<打包输出目录>\sp-gdrive-downloader-v1.5.pkg" -Algorithm SHA256).Hash
 # 要求: $remote -eq $local -eq 步骤4 的 sha256
 ```
@@ -168,14 +168,14 @@ Write-Output "REMOTE_RESTORED"
 ### 步骤 8：把验证哈希写进 lists.yaml 并推送（关键，漏掉 SP 检测不到）
 编辑 `lists.yaml` 的 `sha256:` 为步骤 6 的**小写**哈希（64 位），再次 git 提交推送 + 抓 raw 验证：
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-library/main/lists.yaml" -OutFile "C:\Users\AOC\AppData\Local\Temp\opencode\my-lists.yaml"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ggwpcj/sp-plugin-library/main/lists.yaml" -OutFile "C:\SPdrive-buildw\my-lists.yaml"
 # 确认 raw 内容：version=1.4 且 sha256=新哈希
 ```
 > 顺序注意：先步骤 4 打包 → 上传 → 验证 → **最后**填哈希。填完哈希后**不再重打包**（铁律 R-1）。
 
 ### 步骤 9：同步商城 PR #4 分支（fork）
 ```powershell
-# 工作目录 C:\Users\AOC\AppData\Local\Temp\opencode\pluginfork，分支 update-gdrive-v1.x（PR #4）
+# 工作目录 C:\SPdrive-buildw\pluginfork，分支 update-gdrive-v1.x（PR #4）
 # 若临时目录已被清理，先重新 clone fork：git clone https://github.com/ggwpcj/plugins.git pluginfork（见 F-09）
 # 可先 rebase 到 upstream/main（避免 PR 冲突），再将本地 lists.yaml 的（version/package/sha256/introduction）同步到 fork 的 lists.yaml
 # 在 fork 内: git commit → token push 到 update-gdrive-v1.x

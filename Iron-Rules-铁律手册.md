@@ -16,7 +16,7 @@
 | R-6 | **真实并发在途 HTTP 必须限流** | 不加信号量，树+分页嵌套可打到 64 并发 → 对 Google/宿主洪峰。用 `threading.BoundedSemaphore(8)` 包 `context.request`。 |
 | R-7 | **git remote 带 token 推送后立即还原** | token 泄入 origin 是安全事故。推完回设 `https://github.com/...`。 |
 | R-8 | **token 绝不写入文件/提交/包/聊天** | 只存在于 `E:\yuanma\gugechajian-0905\GITHUB_TOKEN.txt` 临时读取。 |
-| R-9 | **临时/杂散文件禁止留源码目录** | test*.py、旧手册 md、.pyc 等进包 → source_files 变化、哈希漂移。临时脚本放 `C:\Users\AOC\AppData\Local\Temp\opencode\`。 |
+| R-9 | **临时/杂散文件禁止留源码目录** | test*.py、旧手册 md、.pyc 等进包 → source_files 变化、哈希漂移。临时脚本放 `C:\SPdrive-buildw\`（插件编译/发布专用目录，产物统一存放于此，勿放公有 Temp）。 |
 | R-10 | **打包 --output 必须用全新不存在目录** | 打包器拒绝覆盖（FileExistsError）。 |
 | R-11 | **改动必须先在本地验收（py_compile/qmlcheck/单测）再提交** | 跳过验收的发布 = 无效发布或破坏其他源码。 |
 | R-12 | **改完同步更新三个手册** | 正确步骤补进开发手册；新教训补进铁律手册。保证"步骤不遗漏、教训全记录"。 |
