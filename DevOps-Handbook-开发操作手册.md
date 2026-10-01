@@ -228,9 +228,9 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - v1.6 既有 9 项 `test_folder_dl.py` 全过（无回归）。
 - 附带修复工具：`C:\SPdrive-buildw\qmlcheck2.py` 原把 `return /re/`、`replace(/[\\/]+$/, "")` 等正则字面量误判为除号并误报括号不配对。已改为关键字表（return/case/typeof/…）+ `(` 后紧跟 `/` 判正则，除号判据补齐 `)`/字母数字，且关键字后若紧跟空白偏向除号。修正后 QML 校验通过。
 - 状态：**已发布（2026-10 v1.7 升版发布）**。
-  - 新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`<v17_sha>`（`<v17_bytes>`B，source_files=`<v17_files>`，5 项校验 `<v17_verif>`）。
-  - Release v1.7 id=`<v17_release>`，asset id=`<v17_asset>`；远程 HASH_MATCH=`<v17_hashmatch>`；main 推送 `<v17_commit>`。
-  - PR #4 分支 update-gdrive-v1.5（head=`<v17_head>`）待上游合并。
+  - 新包 `sp-gdrive-downloader-v1.7.pkg`，**sha256=`c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec`**（39950B，source_files=12，新打包器 5 项校验全过含 plugin-api-capabilities）。
+  - Release v1.7 id=`400638540`，asset id=`602387514`；远程 HASH_MATCH=YES；main 推送 `ba61fa5`（功能+手册）→ `bf81749`（lists.yaml 落库）。
+  - PR #4 分支 update-gdrive-v1.5（head=`783d7f8`，已 rebase 到 upstream/main `4d91afe`，mergeable=clean）待上游合并。
   - ⚠️ 需远程 SP 实测：粘贴用户该 `open?id=` 链接 → 应识别为文件夹 → 展开并可下载 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）；同时回归确认普通文件链接仍走直链下载。
 
 ### v1.6（第 1 轮）—— 勾选文件夹一键递归下载整个文件夹
