@@ -204,6 +204,35 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - PR #4（head=`bf5c9c7`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
   - ⚠️ 需远程 SP 实测：双击文件夹进入、双击文件下载、批量勾选下载、缓存复用、树形进度显示。
 
+### v1.7（第 2 轮）—— 加密/分卷压缩包下载到确认页 HTML 而非文件（用户二次报障）
+- 症状（用户报障）：v1.7 第 1 轮发布后，用户反馈"**能解析出来文件，但是下载失败**"。目标文件 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）。
+- 根因（代码定位 worker/main.py `direct_download_url`）：生成的直链是 `usercontent/download?id=..&export=download`，**缺 `confirm` 参数**。Google 对"加密或分卷压缩包"强制返回**病毒扫描确认页**：HTTP 200 + `text/html` + 2456B，`<title>Google Drive - Virus scan warning</title>`，页面文案 `Google Drive can't scan this file for viruses ... is encrypted or a multi-volume archive`。SP 宿主按此 URL 下载，存下的是 HTML → 表现为"下载失败"。
+- **为什么第 1 轮没抓到**：`resolve_download()` 早就通过 `extract_confirm_token()` 处理过确认页，但**目录列表路径不走它**——`list_folder` 直接把 `direct_download_url()` 的裸 URL 塞进 `item["downloadUrl"]` 交给宿主，绕过了整段确认页逻辑。
+- 实测对照（同一 file_id，真实网络）：
+
+  | 请求 | 结果 |
+  | --- | --- |
+  | `?id=..&export=download`（修复前） | 200 `text/html` 2456B，确认页 |
+  | `?id=..&export=download&confirm=t`（修复后） | 200 `application/octet-stream` 37628353B，首字节 `7z\xbc\xaf'\x1c` |
+  | `&confirm=t` + `Range: bytes=0-1` | 206 `Content-Range: bytes 0-1/37628353` |
+
+  确认页表单里本来就有 `<input type="hidden" name="confirm" value="t">`（有时还带 `uuid`）。实测 **`confirm=t` 单独已足够**，不必带 uuid；对无需确认的普通文件附加 `confirm=t` 也无副作用（对照测试中加与不加 confirm 的响应一致）。
+- 修改：
+  1. `worker/gdrive.py`：新增 `DOWNLOAD_CONFIRM = "t"` 与幂等函数 `with_download_confirm(url)`——无 confirm 才追加，已有 `confirm=`（含 uuid 形式、非 `t` 值）原样保留，空串安全。
+  2. `worker/gdrive.py`：`build_download_info()` 三个分支（已是 usercontent 直连 / 返回 HTML 确认页 / 直接二进制）统一经 `with_download_confirm()` 收口；确认页里**取不到** confirm 字段时兜底为 `t`（原逻辑 `if confirm:` 会漏拼）。
+  3. `worker/main.py`：`direct_download_url()` 统一输出 `...&export=download&confirm=t`；`resolve_download()` 的 usercontent 失败分支也过 `with_download_confirm()`。
+- 验收（按开发手册三、步骤 3/4）：
+  - `python -m py_compile worker/main.py worker/gdrive.py` 通过；`qmlcheck2.py ui/main.qml` 全过（QML 未改，仅回归确认）。
+  - 新增 `C:\SPdrive-buildw\test_v18_confirm.py`：**20 项全过**——直链带 confirm、幂等函数（补 confirm/不重复追加/保留 uuid/保留非 `t` 值/空串）、`build_download_info` 三分支、确认页不被 `is_denied_page` 误判。
+  - 端到端真实网络 `verify_fix_e2e.py`：Range 请求 206 且 `Content-Range: bytes 0-1/37628353`、返回 7z 魔数；无 Range 请求 200 返回 `application/octet-stream`、`Content-Length == 37628353`、首字节 `7z\xbc\xaf'\x1c`；disposition 含原始文件名与 `.7z`；预览页仍 200。**确认不再返回确认页 HTML。**
+  - 回归：`test_folder_dl.py` 9 项、`test_v17_probe.py` 24 项全过。
+- 状态：**已发布（2026-10 v1.7 同版本覆盖重发，用户明确要求直接覆盖 v1.7）**。
+  - 新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`<repack_sha>`（`<repack_bytes>`B，source_files=`<repack_files>`，5 项校验全过）。
+  - 沿用 Release v1.7 id=`400638540`；旧 asset id=`602387514` 已删，新 asset id=`<repack_asset>`；远程 HASH_MATCH=`<repack_hashmatch>`；main 推送 `<repack_commit>`。
+  - PR #4 分支 update-gdrive-v1.5（head=`<repack_head>`）待上游合并。
+  - ⚠️ 需远程 SP 实测：粘贴 `open?id=11xcFop_...` → 识别文件夹 → 勾选 `.7z` 下载应真正得到 36MB 的 7z 文件（不是几 KB 的 HTML）；同时回归确认普通文件链接仍正常。
+  - ⚠️ **同版本覆盖的已知局限**：SP 端与 CDN 可能已缓存旧包哈希，用户若检测不到更新需清除 SP 更新缓存后再检查。
+
 ### v1.7（第 1 轮）—— open?id= 分享链接自动识别文件/文件夹（用户报障）
 - 症状（用户报障）：粘贴 `https://drive.google.com/open?id=11xcFop_CLN6-F9mDlgTaFV0E5_4bQGrE`，页面显示文件夹标题 `NewNumbers[自动监控号码]`，但插件把它当**文件**下载，解析失败/下载不到内部文件 `NewNumbers_v1.9_beta1[测试版][20260929].7z`。
 - 根因（两处叠加）：
@@ -227,8 +256,9 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - 新增 `C:\SPdrive-buildw\test_v17_probe.py`：**24 项全过**——`folder_id_from_url` 6 形态、`file_id_from_url` 4 形态（确保未回归）、`probe_link` 判 folder（用户实测链接）/判 file/显式文件链接/无 ID 抛 ValueError、`folder_url` 构造。
   - v1.6 既有 9 项 `test_folder_dl.py` 全过（无回归）。
 - 附带修复工具：`C:\SPdrive-buildw\qmlcheck2.py` 原把 `return /re/`、`replace(/[\\/]+$/, "")` 等正则字面量误判为除号并误报括号不配对。已改为关键字表（return/case/typeof/…）+ `(` 后紧跟 `/` 判正则，除号判据补齐 `)`/字母数字，且关键字后若紧跟空白偏向除号。修正后 QML 校验通过。
-- 状态：**已发布（2026-10 v1.7 升版发布）**。
-  - 新包 `sp-gdrive-downloader-v1.7.pkg`，**sha256=`c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec`**（39950B，source_files=12，新打包器 5 项校验全过含 plugin-api-capabilities）。
+- 状态：**已发布（2026-10 v1.7 升版发布，同版本覆盖重发）**。
+  - 第 1 次发布：新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec`（39950B，source_files=12）。该版本修好了 `open?id=` 类型误判，但**用户实测仍下载失败** → 见 v1.7 第 2 轮。
+  - 第 2 次发布（覆盖同版本）：`<repack_sha>`（`<repack_bytes>`B），Release/asset 沿用，删旧 asset 后重传同名包。
   - Release v1.7 id=`400638540`，asset id=`602387514`；远程 HASH_MATCH=YES；main 推送 `ba61fa5`（功能+手册）→ `bf81749`（lists.yaml 落库）。
   - PR #4 分支 update-gdrive-v1.5（head=`783d7f8`，已 rebase 到 upstream/main `4d91afe`，mergeable=clean）待上游合并。
   - ⚠️ 需远程 SP 实测：粘贴用户该 `open?id=` 链接 → 应识别为文件夹 → 展开并可下载 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）；同时回归确认普通文件链接仍走直链下载。

@@ -29,6 +29,8 @@
 | R-19 | **同一文件夹 id 只解析一次（循环目录守卫）** | Drive 目录理论上无环，但自指/软链/同名会死循环爆请求。用 node_by_id 去重。 |
 | R-20 | **改代码前必须先读三个手册（开发/部署/铁律）** | 防止凭记忆破坏正常源码。 |
 | R-21 | **超宽路径的滚轮只由路径视口接管** | `Flickable.HorizontalFlick` 仅保证拖拽，不会自动把竖向鼠标滚轮变成横向滚动；只在内容可移动时消费滚轮，边界透传，不能覆盖目录点击和固定图标按钮。 |
+| R-23 | **`open?id=` 等歧义分享链接不得靠 URL 形态猜类型** | `https://drive.google.com/open?id=ID` 对文件和文件夹都合法，页面标题也会误导。必须轻量请求（≤256KiB）跟随 302，用**响应的最终 URL** 判定 file/folder；不要用文件名 `[]`、ID 含 `-`/`_` 之类的表象猜类型。 |
+| R-24 | **下载直链必须带 `confirm=t`；HTTP 200 不等于下载成功** | 加密/分卷压缩包（`.7z`/`.rar`/分卷 `.zip` 等）在 `export=download` 时返回 200 + `text/html` 的病毒扫描确认页，宿主会存下 HTML。**所有**下载直链统一带 `confirm=t`（用幂等的 `with_download_confirm()` 收口，不要各处手拼）。校验下载链路必须同时看 `Content-Type` 与首字节。 |
 | R-22 | **新打包器契约（维护者更新后）**：`METADATA.yaml` 必须含 `最低SP版本`（API1→`3.0-beta-1`、API2→`3.0-beta-2`、API3→`3.0-beta-3`，API1 不得填晚于 `3.0-beta-1`）；全部 `spPlugin.*`/QML 组件必须在 API 合约登记（缺失报 `Missing manifest field`/`unregistered spPlugin capability`）；在线 lists.yaml 条目必须含 `api_version`+`minimum_sp_version` 且与包内一致；打包禁用 `cache/`（sqlite 产物曾混入 v1.5-r1）。 |
 
 ---
@@ -115,6 +117,21 @@
 - **正确**：发布完成后**立即回填**三本手册真实数字：sha256（小写）/打包输出目录/Release ID/新 asset ID/提交号/PR head，并在改动记录状态注明，然后提交推送 main。回填动作属于发布链**必需步骤**，不是可选项（见部署手册步骤 8 后补充的回填步）。
 - **教训**：占位符换成真实值要趁数据还热时做（Release/asset ID、PR head 刚拿到的当下）；等会话后再回填容易漏。自检清单第 9 条"三个手册已同步更新"应包含"发布数字已回填非占位"。
 
+### F-16 加密/分卷压缩包下载到的是病毒扫描确认页 HTML（第 9 轮用户报障）
+- **现象**：v1.7 发布后用户反馈"能解析出文件，但下载失败"。目标是 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（37628353B）。
+- **根因**：`direct_download_url()` 生成的是 `usercontent/download?id=..&export=download`，**缺 `confirm` 参数**。Google 对"加密或分卷压缩包"强制返回**病毒扫描确认页**：HTTP 200 + `text/html` + 2456B，`<title>Google Drive - Virus scan warning</title>`，页面文案 `Google Drive can't scan this file for viruses ... is encrypted or a multi-volume archive`。SP 宿主按此 URL 下载，存下的是 HTML 不是文件 → 表现为"下载失败"。
+- **实测对照**（同一 file_id）：
+  | 请求 | 结果 |
+  | --- | --- |
+  | `?id=..&export=download` | 200 `text/html` 2456B，确认页 |
+  | `?id=..&export=download&confirm=t` | 200 `application/octet-stream` 37628353B，首字节 `7z\xbc\xaf'\x1c` |
+  | `&confirm=t` + `Range: bytes=0-1` | 206，`Content-Range: bytes 0-1/37628353` |
+- **正确**（R-24）：所有下载直链统一带 `confirm=t`。确认页表单里本来就有 `name="confirm" value="t"`（有时还带 `uuid`），`extract_confirm_token()` 一直能解析到，只是目录列表路径**不走** `resolve_download` 而直接把裸 URL 交给宿主，绕过了该逻辑。新增幂等的 `with_download_confirm()` 统一收口，避免各处重复拼串。
+- **教训**：
+  1. **返回 200 不代表成功**——必须看 `Content-Type` 与首字节。确认页是 200，`Content-Type: text/html`；文件本体是 `application/octet-stream`。
+  2. 压缩包类文件（`.7z` / `.rar` / 分卷 `.zip` / 加密 PDF / 加密视频）都要考虑确认页，不要只在"文件能解析出来"时就认为下载链路 OK。
+  3. 单测要覆盖**每个 URL 构造分支**都带 confirm，且幂等函数不能重复追加、不能覆盖已有 `uuid`/非 `t` 的 confirm 值。
+
 ### F-15 歧义分享链接按形态猜类型导致文件夹被当文件下载（第 8 轮用户报障）
 - **现象**：用户粘贴 `https://drive.google.com/open?id=11xcFop_CLN6-F9mDlgTaFV0E5_4bQGrE`，页面明明显示文件夹标题 `NewNumbers[自动监控号码]`，插件却按文件去下载，解析失败、拿不到内部文件。
 - **根因**：`open?id=` 对文件和文件夹**都合法**，单看 URL 无法区分；而前端把"非 `/folders/` 形态"一律当文件，后端也没提供类型探测接口 → 必然误判。顺带排查掉的假线索：ID 里的 `-`/`_`、文件名里的 `[]` 都不是原因（`folder_id_from_url` 对这些字符一直正常）。
@@ -125,7 +142,7 @@
 
 ## 二、发布前 3 分钟自检清单
 
-1. ☐ 读本手册（铁律 R-1~R-23 过一遍）
+1. ☐ 读本手册（铁律 R-1~R-24 过一遍）
 2. ☐ 读《开发操作手册》确认验收全过
 3. ☐ `git status` 干净、无杂散文件
 4. ☐ 版本是否被要求保持/升版（当前 v1.7，用户已同意升版）

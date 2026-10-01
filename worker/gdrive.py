@@ -8,6 +8,16 @@ from urllib.parse import unquote
 
 DOWNLOAD_BASE = "https://drive.usercontent.google.com/download"
 
+# Google 对"加密或分卷压缩包"（.7z/.rar/.zip 分卷等）强制返回病毒扫描确认页：
+# `download?id=..&export=download` 命中时返回 200 + text/html 的确认页
+# （title 为 `Google Drive - Virus scan warning`，页面提示
+# "can't scan this file for viruses ... is encrypted or a multi-volume archive"），
+# 而不是文件本体，宿主拿这个 URL 去下载只会存下一个几 KB 的 HTML。
+#
+# 确认页表单里带 `confirm=t`（有时还带 uuid），带上它即可直接取到文件本体；
+# 实测对无需确认的普通文件也无副作用，因此直链统一附加该参数（F-16）。
+DOWNLOAD_CONFIRM = "t"
+
 _FILE_ID_PATTERNS = [
     re.compile(r"/file/d/([^/?#&]+)"),
     re.compile(r"[?&]id=([^&?#]+)"),
@@ -72,6 +82,19 @@ def extract_download_action(body: str) -> str:
     return ""
 
 
+def with_download_confirm(url: str) -> str:
+    """确保下载直链带 confirm 参数（幂等）。
+
+    加密/分卷压缩包的 `export=download` 会先返回病毒扫描确认页，
+    只有带 confirm 才会返回文件本体（F-16）。
+    """
+    if not url:
+        return url
+    if re.search(r"[?&]confirm=", url, re.IGNORECASE):
+        return url
+    return f"{url}&confirm={DOWNLOAD_CONFIRM}"
+
+
 def filename_from_disposition(value: str) -> str:
     match = re.search(r"filename\*=(?:UTF-8|utf-8)''([^;]+)", value, re.IGNORECASE)
     if match:
@@ -121,7 +144,7 @@ def build_download_info(
     content_disposition: str,
 ) -> Tuple[str, str]:
     if "drive.usercontent.google.com" in (final_url or ""):
-        return final_url, filename_from_disposition(content_disposition)
+        return with_download_confirm(final_url), filename_from_disposition(content_disposition)
 
     if (body or "").lstrip().startswith("<"):
         action = extract_download_action(body)
@@ -129,11 +152,12 @@ def build_download_info(
         base = action if action.startswith("https://") else DOWNLOAD_BASE
         sep = "&" if "?" in base else "?"
         url = f"{base}{sep}id={file_id}&export=download"
-        if confirm:
-            url += f"&confirm={confirm}"
-        return url, filename_from_html(body)
+        # 确认页里的 confirm 值通常就是 "t"；缺失时用默认值兜底，
+        # 否则压缩包会再次退回病毒扫描确认页（F-16）。
+        url += f"&confirm={confirm or DOWNLOAD_CONFIRM}"
+        return with_download_confirm(url), filename_from_html(body)
 
-    url = f"{DOWNLOAD_BASE}?id={file_id}&export=download"
+    url = f"{DOWNLOAD_BASE}?id={file_id}&export=download&confirm={DOWNLOAD_CONFIRM}"
     return url, filename_from_disposition(content_disposition)
 
 

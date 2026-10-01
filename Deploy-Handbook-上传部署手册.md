@@ -62,12 +62,27 @@ SAULT : source_files=12（新打包器 package-report.json：sha f40d3def…a744
 发布轮次  : v1.7 第 1 轮（open?id= 分享链接自动识别文件/文件夹）✅ 2026-10 已完成
 版本      : v1.7
 包名      : sp-gdrive-downloader-v1.7.pkg
-sha256    : c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec ✅
-打包输出  : C:\SPdrive-buildw\pkg-v1.7-r1（新打包器，5项校验全过含plugin-api-capabilities）
+sha256    : c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec ⚠️ 已被第 2 轮覆盖，作废
+打包输出  : C:\SPdrive-buildw\pkg-v1.7-r1（作废）
 Release ID: 400638540
-新asset ID: 602387514 ✅ HASH_MATCH=YES
+新asset ID: 602387514（已删）⚠️ 用户实测仍下载失败 → 见第 2 轮
 SAULT : source_files=12（package-report.json：39950B）
 推送    : 源码 ba61fa5（功能+手册）→ bf81749（lists.yaml 落库）；PR #4 分支 783d7f8（open，mergeable=clean）
+```
+
+```
+发布轮次  : v1.7 第 2 轮（加密/分卷压缩包 confirm=t 修复，同版本覆盖重发）✅ 2026-10 已完成
+版本      : v1.7（用户明确要求直接覆盖 v1.7，不升版）
+包名      : sp-gdrive-downloader-v1.7.pkg
+sha256    : <repack_sha> ✅
+打包输出  : <repack_out>（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: 400638540（沿用）
+旧asset ID: 602387514（已删）
+新asset ID: <repack_asset> ✅ HASH_MATCH=<repack_hashmatch>
+SAULT : source_files=<repack_files>（package-report.json：<repack_bytes>B）
+推送    : 源码 <repack_commit>（功能+手册）；PR #4 分支 <repack_head>（open）
+备注    : 同版本覆盖 → SP 端/CDN 可能缓存旧包，用户需清缓存后检查更新
+```
 ```
 
 ---
@@ -237,4 +252,5 @@ git add -A; git commit -m "手册回填 vX.Y 发布数字（sha/Release/asset/PR
 - v1.4 第 2 轮：移除链接池——上线 0b5c26，asset 549685100，PR #3 head c229e1e（open）
 - v1.5 第 1 轮：勾选文件夹一键递归下载整个文件夹——**已发布**（sha d0624f63，asset 563356585，PR #4 head bf5c9c7 open，待上游合并）
 - v1.6 第 1 轮：勾选文件夹一键递归下载整个文件夹（collectFolderFiles 重写，下载阶段文件夹递归展开）——**已发布**（sha f40d3def，asset 585613860，PR #4 head 310fd28 open，待上游合并）
-- v1.7 第 1 轮：`open?id=` 分享链接自动识别文件/文件夹（probe_link 跟随 302 判定，R-23/F-15）——**已发布**（sha c6a1ab06，asset 602387514，PR #4 head 783d7f8 open，待上游合并）
+- v1.7 第 1 轮：`open?id=` 分享链接自动识别文件/文件夹（probe_link 跟随 302 判定，R-23/F-15）——**已发布但被覆盖**（sha c6a1ab06 已作废；用户实测"能解析但下载失败"→ 根因是 confirm 页，见第 2 轮）
+- v1.7 第 2 轮：下载直链统一附加 `confirm=t`，修复加密/分卷压缩包下载到病毒扫描确认页 HTML（R-24/F-16）——**已发布**（sha `<repack_sha>`，asset `<repack_asset>`，PR #4 head `<repack_head>` open，待上游合并）

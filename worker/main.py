@@ -158,7 +158,7 @@ def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
         final_url = response.get("url") or ""
         if "drive.usercontent.google.com" in final_url:
             context.progress(1.0, "解析完成")
-            return {"url": final_url, "fileName": ""}
+            return {"url": with_download_confirm(final_url), "fileName": ""}
         error = response.get("error") or "请求失败"
         raise RuntimeError(f"获取下载地址失败: {error}")
 
@@ -185,7 +185,12 @@ def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
 
 
 def direct_download_url(file_id: str) -> str:
-    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download"
+    # 必须带 confirm=t：加密/分卷压缩包（.7z 等）否则只会返回病毒扫描确认页 HTML，
+    # 宿主按此 URL 下载得到的是确认页而不是文件（见 F-16）。
+    return (
+        "https://drive.usercontent.google.com/download"
+        f"?id={file_id}&export=download&confirm=t"
+    )
 
 
 def folder_url(folder_id: str) -> str:
