@@ -147,9 +147,9 @@ PluginWorkspacePage {
     }
 
     function resolveFolderTree(url) {
-        if (!/\/drive\/folders\//.test(url))
+        if (!/\/drive\/(?:u\/\d+\/)?folders\//.test(url))
             return ""
-        var m = url.match(/\/drive\/folders\/([^/?#]+)/)
+        var m = url.match(/\/drive\/(?:u\/\d+\/)?folders\/([^/?#]+)/)
         return (m && m[1]) || ""
     }
 
@@ -472,14 +472,29 @@ PluginWorkspacePage {
         root.pathStack = []
         root.treeRootUrl = link
         root.resetFolderCache()
-        if (/\/drive\/folders\//.test(link)) {
+        if (/\/drive\/(?:u\/\d+\/)?folders\//.test(link)) {
             var fid = root.resolveFolderTree(link)
             if (fid)
                 root.loadFolder(link, [{"id": fid, "name": ""}], false,
                                 root.depthMode === "tree")
+        } else if (root.isAmbiguousShareLink(link)) {
+            // open?id= 既可能是文件也可能是文件夹，需后端跟随重定向判定类型
+            root.probeLinkKind(link)
         } else {
             root.loadFileUrl(link)
         }
+    }
+
+    function isAmbiguousShareLink(url) {
+        return /\/open\?(?:[^#]*&)?id=/.test(url) || /[?&]folder=/.test(url)
+    }
+
+    function probeLinkKind(url) {
+        if (root.requestId.length > 0)
+            return
+        root.treeParsing = false
+        root.statusText = "正在识别链接类型..."
+        root.requestId = root.spPlugin.call("probe_link", {"url": url, "route": root.route}, 60000)
     }
 
     function buildSaveDirectory(entry) {
@@ -747,6 +762,26 @@ PluginWorkspacePage {
                 return
             }
             var result = response.result || {}
+            if (method === "probe_link") {
+                var kind = String(result.kind || "")
+                var resolvedUrl = String(result.finalUrl || "")
+                if (kind === "folder") {
+                    var probedId = String(result.id || "")
+                    if (probedId) {
+                        root.loadFolder(resolvedUrl || root.folderUrl(probedId),
+                                        [{"id": probedId, "name": ""}], false,
+                                        root.depthMode === "tree")
+                        return
+                    }
+                } else if (kind === "file") {
+                    root.loadFileUrl(resolvedUrl || "https://drive.google.com/open?id=" + String(result.id || ""))
+                    return
+                }
+                root.driveRows = []
+                root.statusText = "无法识别该链接是文件还是文件夹"
+                root.spPlugin.showToast("无法识别该链接类型，请确认分享链接有效", "warning", "gdrive-kind-unknown")
+                return
+            }
             if (method === "list_folder" || method === "list_folder_tree") {
                 var folderId = String(result.folderId || root.pendingFolderId || "")
                 var path = root.pendingPathStack.slice()

@@ -14,10 +14,15 @@ _FILE_ID_PATTERNS = [
     re.compile(r"/d/([^/?#&]+)"),
 ]
 
+# `open?id=<folder_id>` 是 Drive 分享文件夹时的常见形式：服务端会 302 到
+# `/drive/folders/<id>`。当它指向文件夹时必须按文件夹解析，否则前端会当成
+# 文件走下载直链，Google 对文件夹 ID 返回 HTTP 500（见 F-15）。
 _FOLDER_ID_PATTERNS = [
-    re.compile(r"/drive/folders/([^/?#&]+)"),
+    re.compile(r"/drive/(?:u/\d+/)?folders/([^/?#&]+)"),
     re.compile(r"folder=([^&?#]+)"),
     re.compile(r"folderview\?id=([^&?#]+)"),
+    re.compile(r"/open\?id=([^&?#]+)"),
+    re.compile(r"^open\?id=([^&?#]+)"),
 ]
 
 

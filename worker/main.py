@@ -72,6 +72,70 @@ def _fetch(
     })
 
 
+def probe_link(context: Any, params: dict[str, Any]) -> dict[str, Any]:
+    """判定分享链接指向文件还是文件夹。
+
+    `open?id=<id>` 对文件和文件夹都成立（服务端 302 到 `/drive/folders/<id>`
+    或 `/file/d/<id>/view`），前端无法只靠字符串判断。用一次轻量请求跟随
+    重定向后的最终 URL 判定类型，避免把文件夹当文件下载（Google 返回 500）。
+    """
+    context.check_cancelled()
+    url = str(params.get("url") or "").strip()
+    route = str(params.get("route") or "auto").strip() or "auto"
+
+    candidate = folder_id_from_url(url) or file_id_from_url(url)
+    if not candidate:
+        raise ValueError("无法识别谷歌网盘链接中的 ID，请粘贴分享链接")
+
+    context.progress(0.3, "正在识别链接类型")
+
+    response = _fetch(
+        context,
+        f"https://drive.google.com/open?id={candidate}",
+        256 * 1024,
+        route,
+    )
+
+    final_url = str(response.get("url") or "")
+    title = ""
+    body = response.get("body") or ""
+    if isinstance(body, str) and body:
+        title_match = re.search(r"<title>([^<]*)</title>", body, re.IGNORECASE)
+        if title_match:
+            title = html.unescape(title_match.group(1)).strip()
+
+    # 以重定向后的最终 URL 为准；未跟随重定向时回退到原始链接形态。
+    probe_target = final_url or url
+    folder_match = re.search(
+        r"/drive/(?:u/\d+/)?folders/([^/?#&]+)", probe_target, re.IGNORECASE
+    )
+    file_match = re.search(r"/file/d/([^/?#&]+)", probe_target, re.IGNORECASE)
+
+    if folder_match:
+        return {
+            "kind": "folder",
+            "id": folder_match.group(1),
+            "title": title,
+            "finalUrl": folder_url(folder_match.group(1)),
+        }
+    if file_match:
+        return {
+            "kind": "file",
+            "id": file_match.group(1),
+            "title": title,
+            "finalUrl": f"https://drive.google.com/file/d/{file_match.group(1)}/view",
+        }
+    if folder_id_from_url(url) and not file_id_from_url(url):
+        return {"kind": "folder", "id": folder_id_from_url(url), "title": title,
+                "finalUrl": folder_url(folder_id_from_url(url))}
+    return {
+        "kind": "file",
+        "id": candidate,
+        "title": title,
+        "finalUrl": f"https://drive.google.com/file/d/{candidate}/view",
+    }
+
+
 def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
     context.check_cancelled()
     url = str(params.get("url") or "").strip()
@@ -122,6 +186,10 @@ def resolve_download(context: Any, params: dict[str, Any]) -> dict[str, Any]:
 
 def direct_download_url(file_id: str) -> str:
     return f"https://drive.usercontent.google.com/download?id={file_id}&export=download"
+
+
+def folder_url(folder_id: str) -> str:
+    return f"https://drive.google.com/drive/folders/{folder_id}"
 
 
 def _parent_path(params: dict[str, Any]) -> str:

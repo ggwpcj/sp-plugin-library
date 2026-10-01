@@ -58,6 +58,18 @@ SAULT : source_files=12（新打包器 package-report.json：sha f40d3def…a744
 推送    : 源码 55eb759（功能+手册）→ 6887236（lists.yaml 落库）；PR #4 分支 310fd28（open，待上游合并）
 ```
 
+```
+发布轮次  : v1.7 第 1 轮（open?id= 分享链接自动识别文件/文件夹）✅ 2026-10 已完成
+版本      : v1.7
+包名      : sp-gdrive-downloader-v1.7.pkg
+sha256    : <v17_sha> ✅
+打包输出  : <v17_out>（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: <v17_release>
+新asset ID: <v17_asset> ✅ HASH_MATCH=<v17_hashmatch>
+SAULT : source_files=<v17_files>（package-report.json：<v17_bytes>B）
+推送    : 源码 <v17_commit>（功能+手册）；PR #4 分支 <v17_head>（open，待上游合并）
+```
+
 ---
 
 ## 一、SP 在线更新机制与校验契约（部署铁律）
@@ -225,3 +237,4 @@ git add -A; git commit -m "手册回填 vX.Y 发布数字（sha/Release/asset/PR
 - v1.4 第 2 轮：移除链接池——上线 0b5c26，asset 549685100，PR #3 head c229e1e（open）
 - v1.5 第 1 轮：勾选文件夹一键递归下载整个文件夹——**已发布**（sha d0624f63，asset 563356585，PR #4 head bf5c9c7 open，待上游合并）
 - v1.6 第 1 轮：勾选文件夹一键递归下载整个文件夹（collectFolderFiles 重写，下载阶段文件夹递归展开）——**已发布**（sha f40d3def，asset 585613860，PR #4 head 310fd28 open，待上游合并）
+- v1.7 第 1 轮：`open?id=` 分享链接自动识别文件/文件夹（probe_link 跟随 302 判定，R-23/F-15）——**已发布**（sha `<v17_sha>`，asset `<v17_asset>`，PR #4 head `<v17_head>` open，待上游合并）

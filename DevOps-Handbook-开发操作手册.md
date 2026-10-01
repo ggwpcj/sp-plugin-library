@@ -204,6 +204,35 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - PR #4（head=`bf5c9c7`，分叉自 v1.5 分支）待上游合并；worker/main.py、worker/gdrive.py、ui/main.qml 磁盘哈希已同步进 CHECKSUMS.yaml。
   - ⚠️ 需远程 SP 实测：双击文件夹进入、双击文件下载、批量勾选下载、缓存复用、树形进度显示。
 
+### v1.7（第 1 轮）—— open?id= 分享链接自动识别文件/文件夹（用户报障）
+- 症状（用户报障）：粘贴 `https://drive.google.com/open?id=11xcFop_CLN6-F9mDlgTaFV0E5_4bQGrE`，页面显示文件夹标题 `NewNumbers[自动监控号码]`，但插件把它当**文件**下载，解析失败/下载不到内部文件 `NewNumbers_v1.9_beta1[测试版][20260929].7z`。
+- 根因（两处叠加）：
+  1. `worker/gdrive.py` 的 `folder_id_from_url()` 只认 `/folders/ID` 形态，不认 `open?id=`。
+  2. `ui/main.qml` 的 `parseLink()` 把非文件夹 URL 一律走 `loadFileUrl()`，而 `open?id=` 对**文件和文件夹都合法**（单看 URL 无法区分），因此必然误判。
+- 实测确认（非猜测）：
+  - `open?id=` 请求后 302 → `https://drive.google.com/drive/folders/11xcFop_CLN6-F9mDlgTaFV0E5_4bQGrE`，**真实类型是文件夹**。
+  - `uc?export=download&id=<文件夹ID>` 返回 HTTP 500（证实不能按文件下载）。
+  - `embeddedfolderview?id=<文件夹ID>` 仍返回 8 个 `flip-entry`，且现有 `parse_folder_page()` 已能正确解析出该 .7z 文件 → **无需新增 `_DRIVE_ivd` 解析器**，原有目录解析路径直接可用。
+- 修改：
+  1. `worker/gdrive.py`：`_FOLDER_ID_PATTERNS` 扩充为 `/drive/(?:u/\d+/)?folders/ID`、`folder=`、`folderview?id=`、`/open?id=`、`^open?id=` 五条形态，覆盖多账号 `/drive/u/N/folders/` 路径。
+  2. `worker/main.py`：新增后端接口 `probe_link(url, route, token)`——对歧义链接以 256KiB 轻量抓取，**依据响应的最终 URL**（302 后真实落点）判定 `kind=file|folder`，同时回传 `id`/`finalUrl`/`title`；另加 `folder_url(id)` 辅助函数。
+  3. `ui/main.qml`：
+     - `resolveFolderTree()` 支持 `/drive/(?:u/\d+/)?folders/`。
+     - `parseLink()`：文件夹 URL 直连；歧义链接（`open?id=` 或含 `folder=`）调 `probe_link`，按返回的 `kind` 分流到 `loadFolder()` 或 `loadFileUrl()`。
+     - 新增 `isAmbiguousShareLink()`、`probeLinkKind()`（60s 超时）。
+     - `onBackendFinished()` 增加 `probe_link` 结果分流，并新增失败兜底 Toast。
+- 校验（按开发手册三、步骤 3/4）：
+  - `python -m py_compile worker/main.py worker/gdrive.py` 通过。
+  - `qmlcheck2.py ui/main.qml`：`OK 括号全部成对 / OK 无 append/push 块 / OK Component.onCompleted 存在 / QML_OK`（AppFormRow 1、AppSelect 2）。
+  - 新增 `C:\SPdrive-buildw\test_v17_probe.py`：**24 项全过**——`folder_id_from_url` 6 形态、`file_id_from_url` 4 形态（确保未回归）、`probe_link` 判 folder（用户实测链接）/判 file/显式文件链接/无 ID 抛 ValueError、`folder_url` 构造。
+  - v1.6 既有 9 项 `test_folder_dl.py` 全过（无回归）。
+- 附带修复工具：`C:\SPdrive-buildw\qmlcheck2.py` 原把 `return /re/`、`replace(/[\\/]+$/, "")` 等正则字面量误判为除号并误报括号不配对。已改为关键字表（return/case/typeof/…）+ `(` 后紧跟 `/` 判正则，除号判据补齐 `)`/字母数字，且关键字后若紧跟空白偏向除号。修正后 QML 校验通过。
+- 状态：**已发布（2026-10 v1.7 升版发布）**。
+  - 新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`<v17_sha>`（`<v17_bytes>`B，source_files=`<v17_files>`，5 项校验 `<v17_verif>`）。
+  - Release v1.7 id=`<v17_release>`，asset id=`<v17_asset>`；远程 HASH_MATCH=`<v17_hashmatch>`；main 推送 `<v17_commit>`。
+  - PR #4 分支 update-gdrive-v1.5（head=`<v17_head>`）待上游合并。
+  - ⚠️ 需远程 SP 实测：粘贴用户该 `open?id=` 链接 → 应识别为文件夹 → 展开并可下载 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）；同时回归确认普通文件链接仍走直链下载。
+
 ### v1.6（第 1 轮）—— 勾选文件夹一键递归下载整个文件夹
 - 症状（用户报障）：勾选文件夹后点"开始下载"**没有任何反应**，必须双击进到文件夹里逐个勾选文件才能下载；文件夹内文件多时操作繁琐。
 - 根因（代码定位 ui/main.qml）：`itemsWithUrl()` 在收集下载目标时用 `isFolderRow(row)` 把**所有文件夹行过滤掉**，只保留带 `downloadUrl` 的文件行 → 勾选文件夹 = 空目标 → 底部"开始下载"无动作。文件夹行的 check 勾选本身是好的（`table.selectedItems()` 能选中文件夹行），只是下载阶段被丢弃。
