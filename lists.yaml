@@ -3,6 +3,6 @@
   api_version: 1
   minimum_sp_version: 3.0-beta-1
   package: https://github.com/ggwpcj/sp-plugin-library/releases/download/v1.7/sp-gdrive-downloader-v1.7.pkg
-  sha256: 0000000000000000000000000000000000000000000000000000000000000000
+  sha256: c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec
   author: ggwpcj
   introduction: 谷歌网盘(Google Drive)文件下载插件：解析性能大幅优化，文件夹分页拉取+直链构造；目录内容缓存(磁盘 sqlite 24h TTL)与树形解析进度显示，多层级大目录并行解析(并发限流)；解析列表真实显示文件大小与修改日期；表格整行单选+单击勾选框、双击文件夹进入子目录/双击文件直接下载、右键菜单、表头排序，点"开始下载"批量下载；勾选文件夹可一键递归下载整个文件夹全部文件（自动展开所有子目录）；本次修复：open?id= 分享链接自动识别文件/文件夹（跟随重定向判定，不再把文件夹当文件下载导致解析失败），并支持 /drive/u/N/folders/ 多账号路径；双击/右键动作写入 SP diagnostic 日志便于排查；线路默认二级代理并支持宿主核心内直连。适用 Windows/Linux/Mac。
