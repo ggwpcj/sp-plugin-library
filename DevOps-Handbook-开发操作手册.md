@@ -227,9 +227,9 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - 端到端真实网络 `verify_fix_e2e.py`：Range 请求 206 且 `Content-Range: bytes 0-1/37628353`、返回 7z 魔数；无 Range 请求 200 返回 `application/octet-stream`、`Content-Length == 37628353`、首字节 `7z\xbc\xaf'\x1c`；disposition 含原始文件名与 `.7z`；预览页仍 200。**确认不再返回确认页 HTML。**
   - 回归：`test_folder_dl.py` 9 项、`test_v17_probe.py` 24 项全过。
 - 状态：**已发布（2026-10 v1.7 同版本覆盖重发，用户明确要求直接覆盖 v1.7）**。
-  - 新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`<repack_sha>`（`<repack_bytes>`B，source_files=`<repack_files>`，5 项校验全过）。
-  - 沿用 Release v1.7 id=`400638540`；旧 asset id=`602387514` 已删，新 asset id=`<repack_asset>`；远程 HASH_MATCH=`<repack_hashmatch>`；main 推送 `<repack_commit>`。
-  - PR #4 分支 update-gdrive-v1.5（head=`<repack_head>`）待上游合并。
+  - 新包 `sp-gdrive-downloader-v1.7.pkg`，**sha256=`61ccff04a06a55ce81e3c38f39c3b5ce42fafa87fcd5eab9e1cc9e45a50338f8`**（42670B，source_files=12，5 项校验全过）。
+  - 沿用 Release v1.7 id=`400638540`；旧 asset id=`602387514` 已删，新 asset id=`602474065`；远程 HASH_MATCH=YES；main 推送 `ff3c4b1`（功能+手册）→ `eb84ebc`（lists.yaml 落库）。
+  - PR #4 分支 update-gdrive-v1.5（head=`1e422d6`，base `4d91afe`）待上游合并。
   - ⚠️ 需远程 SP 实测：粘贴 `open?id=11xcFop_...` → 识别文件夹 → 勾选 `.7z` 下载应真正得到 36MB 的 7z 文件（不是几 KB 的 HTML）；同时回归确认普通文件链接仍正常。
   - ⚠️ **同版本覆盖的已知局限**：SP 端与 CDN 可能已缓存旧包哈希，用户若检测不到更新需清除 SP 更新缓存后再检查。
 
@@ -258,7 +258,7 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
 - 附带修复工具：`C:\SPdrive-buildw\qmlcheck2.py` 原把 `return /re/`、`replace(/[\\/]+$/, "")` 等正则字面量误判为除号并误报括号不配对。已改为关键字表（return/case/typeof/…）+ `(` 后紧跟 `/` 判正则，除号判据补齐 `)`/字母数字，且关键字后若紧跟空白偏向除号。修正后 QML 校验通过。
 - 状态：**已发布（2026-10 v1.7 升版发布，同版本覆盖重发）**。
   - 第 1 次发布：新包 `sp-gdrive-downloader-v1.7.pkg`，sha256=`c6a1ab06645bbe7c5f3104cbed946e200ea1eecd405909ada71b80626cf5b6ec`（39950B，source_files=12）。该版本修好了 `open?id=` 类型误判，但**用户实测仍下载失败** → 见 v1.7 第 2 轮。
-  - 第 2 次发布（覆盖同版本）：`<repack_sha>`（`<repack_bytes>`B），Release/asset 沿用，删旧 asset 后重传同名包。
+  - 第 2 次发布（覆盖同版本，用户实测发现 confirm 页问题后重发）：sha256=`61ccff04a06a55ce81e3c38f39c3b5ce42fafa87fcd5eab9e1cc9e45a50338f8`（42670B），沿用 Release `400638540`，旧 asset `602387514` 已删、新 asset `602474065`，main 推送 `ff3c4b1`→`eb84ebc`，PR #4 head `1e422d6`。
   - Release v1.7 id=`400638540`，asset id=`602387514`；远程 HASH_MATCH=YES；main 推送 `ba61fa5`（功能+手册）→ `bf81749`（lists.yaml 落库）。
   - PR #4 分支 update-gdrive-v1.5（head=`783d7f8`，已 rebase 到 upstream/main `4d91afe`，mergeable=clean）待上游合并。
   - ⚠️ 需远程 SP 实测：粘贴用户该 `open?id=` 链接 → 应识别为文件夹 → 展开并可下载 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）；同时回归确认普通文件链接仍走直链下载。
