@@ -83,6 +83,20 @@ SAULT : source_files=12（package-report.json：42670B）
 推送    : 源码 ff3c4b1（功能+手册）→ eb84ebc（lists.yaml 落库）；PR #4 分支 1e422d6（open，base 4d91afe）
 备注    : 同版本覆盖 → SP 端/CDN 可能缓存旧包，用户需清缓存后检查更新
 ```
+
+```
+发布轮次  : v1.8（下载完成提示层：页脚计数+完成横幅+批次汇总toast+复制目录路径）✅ 2026-10 已完成
+版本      : v1.8（用户同意升版；v1.7 已实际安装过，不再同版本覆盖）
+包名      : sp-gdrive-downloader-v1.8.pkg
+sha256    : 4394c8349fb60ac6cb084aa28fc50d7ca9f52f0c14eca46968123d674954d50f ✅
+打包输出  : C:\SPdrive-buildw\pkg-v1.8-r1（新打包器，5项校验全过含plugin-api-capabilities）
+Release ID: 403453253（新建 Release，tag=v1.8）
+新asset ID: 611813042 ✅ HASH_MATCH=YES
+SAULT : source_files=12（package-report.json：44558B）
+推送    : 源码 7cf2661（功能+清单）→ b65c3dd（lists.yaml 落库）→ 手册回填提交；PR #4 分支 c085bf8（open，mergeable=clean，base 4d91afe）
+契约    : 插件API版本保持 1、最低SP版本保持 3.0-beta-1；未引入 API 1 之外的任何能力
+打包前备份: 分支 backup/v1.7-publish-20261005（6ceff73）+ tag v1.7-backup-20261005-144019
+备注    : "打开下载目录"改用显示完整路径 + copyText 复制（SP 无打开资源管理器的 API，见 R-27）
 ```
 
 ---
@@ -240,6 +254,9 @@ git add -A; git commit -m "手册回填 vX.Y 发布数字（sha/Release/asset/PR
 - [ ] PR #4 分支已同步、mergeable=YES
 - [ ] SP 自测通过
 - [ ] 手册已同步更新（DevOps 手册「六、修改记录」+ 部署快照 + 铁律），发布数字已回填**非占位符**（步骤 9b）
+- [ ] 本轮新增的用户可见状态都能在页面上找到渲染位置（R-25）
+- [ ] 铁律总表编号连续无重复（R-1~R-27），且条目顺序正确（R-22/R-23/R-24 曾被插错位置，见 F-14 同类问题）
+- [ ] 发布前已建备份分支/tag（发版前 `git branch backup/vX.Y-<日期>` + `git tag -a vX.Y-backup-<时间戳>`；**不要**占用将来要用的 `vX.Y` tag 名）
 
 ---
 
@@ -254,3 +271,4 @@ git add -A; git commit -m "手册回填 vX.Y 发布数字（sha/Release/asset/PR
 - v1.6 第 1 轮：勾选文件夹一键递归下载整个文件夹（collectFolderFiles 重写，下载阶段文件夹递归展开）——**已发布**（sha f40d3def，asset 585613860，PR #4 head 310fd28 open，待上游合并）
 - v1.7 第 1 轮：`open?id=` 分享链接自动识别文件/文件夹（probe_link 跟随 302 判定，R-23/F-15）——**已发布但被覆盖**（sha c6a1ab06 已作废；用户实测"能解析但下载失败"→ 根因是 confirm 页，见第 2 轮）
 - v1.7 第 2 轮：下载直链统一附加 `confirm=t`，修复加密/分卷压缩包下载到病毒扫描确认页 HTML（R-24/F-16）——**已发布**（sha 61ccff04，asset 602474065，PR #4 head 1e422d6 open，待上游合并）
+- v1.8：下载完成提示层（页脚常驻计数 + 批次结束完成横幅 + 一次汇总 toast + 复制目录路径/文件清单），并修复"完成无提示"的四个根因（R-25/R-26/R-27、F-17）——**已发布**（sha 4394c834，asset 611813042，Release 403453253，PR #4 head c085bf8 open，待上游合并）

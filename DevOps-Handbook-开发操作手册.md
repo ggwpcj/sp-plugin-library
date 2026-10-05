@@ -122,6 +122,9 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
 - [ ] `git status` 无杂散文件；`git diff` 仅预期改动
 - [ ] 三处版本号一致（若动版本）；未动版本则确认 Version 未变
 - [ ] CHECKSUMS.yaml 已按改动更新 4 文件哈希（若发布前）
+- [ ] 本次新增的每个用户可见状态都能在页面上找到渲染位置；映射表未命中时有兜底而非静默 `return`（R-25）
+- [ ] 若改了 `statusText`：确认全文件没有裸 `root.statusText = ...` 赋值（会破坏绑定，R-26）
+- [ ] 引入任何 `spPlugin.*` / QML 组件前，先查 `sp-plugin-packager\plugin_development.md` 4.2/5.3 确认在 API 合约内（R-27）
 
 ---
 
@@ -130,6 +133,8 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
 | 需求 | 改哪里 |
 | --- | --- |
 | 界面布局/交互/按钮 | `ui/main.qml` |
+| 下载状态提示/完成横幅/页脚计数 | `ui/main.qml`（`downloadStatusText()`、`updateBanner()`、`completionBanner`、`activityText` 通道） |
+| 想调起外部程序或打开本地目录 | **先查手册**：`openExternalUrl` 只收 https、`startProcess` 只收清单声明的自带程序（R-27）；当前只能"显示路径 + `copyText`" |
 | 前端超时/调用参数 | `ui/main.qml` 里 `spPlugin.call(...)` 第三参数 |
 | 解析规则/页面结构变化 | `worker/gdrive.py`（正则/块切分/大小解析） |
 | 列表/树/下载逻辑、并发、预算 | `worker/main.py` |
@@ -262,6 +267,31 @@ git -C "E:\yuanma\gugechajian-0905\谷歌网盘下载" commit -m "<功能说明>
   - Release v1.7 id=`400638540`，asset id=`602387514`；远程 HASH_MATCH=YES；main 推送 `ba61fa5`（功能+手册）→ `bf81749`（lists.yaml 落库）。
   - PR #4 分支 update-gdrive-v1.5（head=`783d7f8`，已 rebase 到 upstream/main `4d91afe`，mergeable=clean）待上游合并。
   - ⚠️ 需远程 SP 实测：粘贴用户该 `open?id=` 链接 → 应识别为文件夹 → 展开并可下载 `NewNumbers_v1.9_beta1[测试版][20260929].7z`（文件 id `1556db6e4Eibv3MyXEOhJ093N0RwEOJdt`，37628353B）；同时回归确认普通文件链接仍走直链下载。
+
+### v1.8 —— 下载完成提示层（页脚计数 + 完成横幅 + 批次汇总 toast + 复制目录路径）
+- 症状（用户报障）：批量下载全部跑完，插件**不弹任何完成提示**，用户不知道下载结束了、也不知道文件存到哪，只能自己去翻目录。
+- 根因（读代码定位 `ui/main.qml`，不是"少写一行 toast"——那行 toast 早就存在）：四个缺陷叠加（R-25）：
+  1. `finishedCount`/`failedCount`/`queuedCount` 三个计数**只累加、全页面零处渲染**，统计等于白算；`statusText` 只在解析时被赋值，空闲时长期为空。
+  2. `onDownloadProgress` 里 `var info = root.queueByTask[String(taskId)]; if (!info) return` —— 页面刷新或重新解析后映射丢失，任务**永久静默**，此后所有进度事件被直接丢弃。
+  3. 完成分支没有幂等守卫，`info.status` 已是 `completed` 还会被重复事件再次 `finishedCount++` 并重复弹提示。
+  4. `showToast(..., "gdrive-done-" + taskId)` 合并键按 `taskId` 拼 → **每个文件一个独立 toast**，下载 20 个文件就是 20 条一闪而过的流水账，等于没有提示。
+- 修改（**仅 `ui/main.qml`**，纯 QML 改动，`worker/*.py` 未动）：
+  1. 新增批次状态：`batchTotal`/`completedList`/`failedList`/`completionDirectory`/`bannerVisible`，`readonly batchRunning = batchTotal - finishedCount - failedCount`；`resetBatch()` 在点"开始下载"时清零，单文件下载（双击）在上一批次结束后自动开新批次，避免计数串味。
+  2. 页脚 `statusText` 改为**绑定** `activityText.length>0 ? activityText : downloadStatusText()`，常驻显示"进行中 N · 已完成 N · 失败 N · 共 N 个任务"、空闲显示"就绪"。为此把原先 13 处裸 `root.statusText = ...` 全部改走新的 `setActivity()` 通道（R-26：直接赋值会破坏绑定）。
+  3. `onDownloadProgress` 映射未命中时**兜底重建** `info`（`task.displayName || task.fileName || task.name || "下载任务"`），写回 `queueByTask`、必要时补记 `batchTotal`，只记一条 diagnostic 日志，**绝不静默 return**。
+  4. 完成/失败进幂等守卫：`if (info.status === "completed" || info.status === "failed")` 时只刷横幅不再计数；失败计数统一收口到 `recordFailure()`，确保 `failedCount++`/`finishedCount++` 各只出现一处。
+  5. toast 改为**批次结束汇总一次**（合并键固定 `gdrive-batch-done`）：全成功 `success`"下载完成：N 个文件已保存到 …"，有失败 `warning`"下载结束：成功 N 个，失败 N 个"。
+  6. 表格上方新增**完成横幅** `completionBanner`（`AppGroupBox`，`height: visible ? implicitHeight : 0` 折叠不占空间）：成功/失败计数（失败用 `PluginTheme.danger`）、实际保存目录（`elidePath()` 中间省略 + `Text.ElideMiddle`）、失败文件列表（前 3 个 + "等 N 个"），按钮为**复制目录路径**、**复制文件清单**（含成功与失败两段）、**关闭**（关掉后本批次不再自动弹，页脚计数保留）。
+- 关于"打开下载目录"——**做了 API 核查后决定不做真打开**（R-27）：查 `sp-plugin-packager\plugin_development.md` 4.2 方法总表确认 SP 无任何打开系统资源管理器的接口：`openExternalUrl()` 原文限定"只接受含有效主机名的 `https://`；不接受 HTTP、本地文件或脚本协议"（`file:///` 必被拒）、`startProcess()` 原文限定"不能传入系统命令或任意路径"（`explorer.exe` 不行，只能跑清单 `执行程序` 声明的自带程序）、`runAction()` 可绑定宿主能力清单里也没有打开目录。故采用"显示完整保存目录 + `copyText` 一键复制"，不新增执行程序、不塞 `file:///`。
+- 契约影响：`插件API版本` 保持 `1`、`最低SP版本` 保持 `3.0-beta-1`（只用 `AppGroupBox`/`AppButton`/`copyText`/`showToast`/`log` 等 API 1 能力，**刻意不用** `AppHoverTip`——它需要 API 3），包体与审核面不变。
+- 验收：`py_compile`×2 通过；`qmlcheck2.py` `QML_OK`；新增 `C:\SPdrive-buildw\test_v18_notify.py` **66 项全过**（8 组静态断言 + 状态机重放：3 个任务逐个完成只在最后弹一次横幅/toast、一成一败走 warning 级、重复完成事件不重复计数、reset 后回空闲、`batchRunning` 不为负）；回归 `test_v18_confirm.py` 20/20、`test_folder_dl.py` 9/9、`test_v17_probe.py` 24/24 全过；`check_versions.py` 版本/契约/CHECKSUMS/简介 18 项全过；`check_pkg_v18.py` 包内 lists 版本+sha+地址一致、无 token/`cache/`/`__pycache__`/临时脚本混入。
+- 状态：**已发布（2026-10 v1.8 升版发布）**。
+  - 新包 `sp-gdrive-downloader-v1.8.pkg`，**sha256=`4394c8349fb60ac6cb084aa28fc50d7ca9f52f0c14eca46968123d674954d50f`**（44558B，source_files=12，5 项校验全过含 plugin-api-capabilities）。
+  - Release v1.8 id=`403453253`（新建，tag=v1.8），asset id=`611813042`；远程 HASH_MATCH=YES。
+  - main 推送 `7cf2661`（功能+清单）→ `b65c3dd`（lists.yaml 落库 sha `4394c834`）。
+  - PR #4 分支 update-gdrive-v1.5（head=`c085bf8`，base `4d91afe`，mergeable=clean），标题已更新为 `Update SP-谷歌网盘下载 to v1.8`。
+  - 发版前备份：分支 `backup/v1.7-publish-20261005`（`6ceff73`）+ tag `v1.7-backup-20261005-144019`（故意不用 `v1.7` 名，避免占用发版 tag）。
+  - ⚠️ 需远程 SP 实测：批量下载 → 页脚应出现"进行中/已完成"计数 → 全部完成后横幅弹出且能复制目录路径 → 下载中途刷新页面，确认兜底跟踪仍能在结束时给提示。
 
 ### v1.6（第 1 轮）—— 勾选文件夹一键递归下载整个文件夹
 - 症状（用户报障）：勾选文件夹后点"开始下载"**没有任何反应**，必须双击进到文件夹里逐个勾选文件才能下载；文件夹内文件多时操作繁琐。
