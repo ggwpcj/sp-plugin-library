@@ -24,6 +24,12 @@ PluginWorkspacePage {
     property int queuedCount: 0
     property int finishedCount: 0
     property int failedCount: 0
+    property int batchTotal: 0
+    property var completedList: []
+    property var failedList: []
+    property string completionDirectory: ""
+    property bool bannerVisible: false
+    property string activityText: ""
     property bool autoRetry: true
     property var pendingRetry: ({})
     property var driveRows: []
@@ -46,6 +52,11 @@ PluginWorkspacePage {
     property int sizeResolved: 0
     readonly property real actionButtonWidth: Math.max(parseButton.minWidth,
                                                        selectButton.minWidth)
+    readonly property int batchRunning: Math.max(0, root.batchTotal
+                                                 - root.finishedCount
+                                                 - root.failedCount)
+    statusText: root.activityText.length > 0 ? root.activityText
+                                            : root.downloadStatusText()
 
     TextMetrics {
         id: depthOptionMetrics
@@ -77,6 +88,116 @@ PluginWorkspacePage {
 
     function chooseDirectory() {
         root.spPlugin.chooseDirectory("选择保存目录", root.saveDirectory)
+    }
+
+    function setActivity(text) {
+        root.activityText = String(text || "")
+    }
+
+    function clearActivity() {
+        root.activityText = ""
+    }
+
+    function downloadStatusText() {
+        if (root.batchTotal <= 0)
+            return "就绪"
+        var parts = ["进行中 " + root.batchRunning]
+        parts.push("已完成 " + root.finishedCount)
+        if (root.failedCount > 0)
+            parts.push("失败 " + root.failedCount)
+        return parts.join(" · ") + " · 共 " + root.batchTotal + " 个任务"
+    }
+
+    function resetBatch() {
+        root.batchTotal = 0
+        root.queuedCount = 0
+        root.finishedCount = 0
+        root.failedCount = 0
+        root.completedList = []
+        root.failedList = []
+        root.completionDirectory = ""
+        root.bannerVisible = false
+    }
+
+    function elidePath(path) {
+        var text = String(path || "")
+        if (text.length <= 52)
+            return text
+        return text.slice(0, 20) + "…" + text.slice(text.length - 28)
+    }
+
+    function batchFinished() {
+        return root.batchTotal > 0 && root.batchRunning <= 0
+    }
+
+    function recordFailure(name) {
+        root.failedCount++
+        root.queuedCount = Math.max(0, root.queuedCount - 1)
+        root.failedList = root.failedList.concat([String(name || "下载任务")])
+    }
+
+    function updateBanner() {
+        if (!root.batchFinished())
+            return
+        root.bannerVisible = true
+        root.clearActivity()
+        var ok = root.finishedCount
+        var bad = root.failedCount
+        var target = root.completionDirectory.length > 0
+            ? root.elidePath(root.completionDirectory)
+            : "SP 临时下载目录"
+        if (bad > 0) {
+            root.spPlugin.showToast("下载结束：成功 " + ok + " 个，失败 " + bad
+                                    + " 个（详见页面提示）",
+                                    "warning", "gdrive-batch-done")
+            return
+        }
+        root.spPlugin.showToast("下载完成：" + ok + " 个文件已保存到 " + target,
+                                "success", "gdrive-batch-done")
+    }
+
+    function copyText(text, okMessage) {
+        var value = String(text || "")
+        if (value.length === 0) {
+            root.spPlugin.showToast("没有可复制的内容", "warning",
+                                    "gdrive-copy-empty")
+            return
+        }
+        if (!root.spPlugin.copyText(value)) {
+            root.spPlugin.showToast("复制失败，请手动选择文本", "error",
+                                    "gdrive-copy-failed")
+            return
+        }
+        root.spPlugin.showToast(okMessage, "success", "gdrive-copied")
+    }
+
+    function copyDirectory() {
+        var dir = root.completionDirectory
+        if (dir.length === 0) {
+            root.spPlugin.showToast("未设置保存目录：文件在 SP 临时下载目录",
+                                    "warning", "gdrive-copy-empty")
+            return
+        }
+        root.copyText(dir, "已复制保存目录路径")
+    }
+
+    function copyFileList() {
+        if (root.completedList.length === 0 && root.failedList.length === 0) {
+            root.spPlugin.showToast("本次没有下载记录", "warning",
+                                    "gdrive-copy-empty")
+            return
+        }
+        var lines = ["保存目录：" + (root.completionDirectory.length > 0
+                                     ? root.completionDirectory
+                                     : "SP 临时下载目录"), "", "成功 " + root.finishedCount + " 个："]
+        for (var i = 0; i < root.completedList.length; i++)
+            lines.push("  " + root.completedList[i])
+        if (root.failedList.length > 0) {
+            lines.push("", "失败 " + root.failedList.length + " 个：")
+            for (var j = 0; j < root.failedList.length; j++)
+                lines.push("  " + root.failedList[j])
+        }
+        root.copyText(lines.join("\n"), "已复制本次下载清单")
     }
 
     function formatBytes(bytes) {
@@ -114,7 +235,7 @@ PluginWorkspacePage {
         root.spPlugin.set("route", root.route)
         root.resetFolderCache()
         if (root.pathStack.length > 0)
-            root.statusText = "线路已切换；目录缓存已清除，请刷新当前目录"
+            root.setActivity("线路已切换；目录缓存已清除，请刷新当前目录");
         if (root.route === "front" || root.route === "second")
             root.spPlugin.checkProxy(root.route, "解析谷歌网盘")
         routeButton.text = "线路：" + root.routeLabelText()
@@ -250,7 +371,7 @@ PluginWorkspacePage {
         root.sizeQueueIds = root.sizeQueueIds.slice(batch.length)
         root.sizeBatchIds = batch
         root.sizeRequestId = request
-        root.statusText = "正在解析选中文件大小 " + root.sizeCompleted + "/" + root.sizeTotal
+        root.setActivity("正在解析选中文件大小 " + root.sizeCompleted + "/" + root.sizeTotal);
     }
 
     function rememberFolder(folderId, folderName, items) {
@@ -347,14 +468,14 @@ PluginWorkspacePage {
         root.totalSizeText = snapshot.totalSize > 0
                 ? root.formatBytes(snapshot.totalSize) : "0 B"
         var unknown = root.unknownSizeCount(snapshot.items)
-        root.statusText = "共 " + snapshot.items.length + " 项，"
-                        + (unknown > 0 ? unknown + " 个文件大小未提供"
-                                       + (snapshot.totalSize > 0
-                                          ? "；已知大小 " + root.totalSizeText : "")
-                                       : "总大小 " + root.totalSizeText)
-                        + (root.treeCacheComplete ? "；完整层级已缓存"
-                           : root.treeCacheTruncated ? "；部分层级已缓存，其余按需读取"
-                           : "；已访问目录直接复用")
+        root.setActivity("共 " + snapshot.items.length + " 项，"
+                         + (unknown > 0 ? unknown + " 个文件大小未提供"
+                                        + (snapshot.totalSize > 0
+                                           ? "；已知大小 " + root.totalSizeText : "")
+                                        : "总大小 " + root.totalSizeText)
+                         + (root.treeCacheComplete ? "；完整层级已缓存"
+                            : root.treeCacheTruncated ? "；部分层级已缓存，其余按需读取"
+                            : "；已访问目录直接复用"))
         return true
     }
 
@@ -382,7 +503,7 @@ PluginWorkspacePage {
         root.treeProgress = root.treeParsing ? 0.05 : 0
         root.parsedFolders = 0
         root.discoveredFolders = root.treeParsing ? 1 : 0
-        root.statusText = prefetchAll ? "正在解析完整目录树..." : "正在获取目录内容..."
+        root.setActivity(prefetchAll ? "正在解析完整目录树..." : "正在获取目录内容...");
         var ancestors = nextPath.slice(0, -1).map(function(entry) {
             return String(entry.name || "")
         }).filter(function(name) { return name.length > 0 })
@@ -396,7 +517,7 @@ PluginWorkspacePage {
     function loadFileUrl(url) {
         linkField.text = url
         root.treeParsing = false
-        root.statusText = "正在获取文件下载地址..."
+        root.setActivity("正在获取文件下载地址...");
         root.requestId = root.spPlugin.call("resolve_download", {"url": url, "route": root.route}, 120000)
     }
 
@@ -405,7 +526,7 @@ PluginWorkspacePage {
         if (!activeId)
             return
         if (!root.spPlugin.cancel(activeId)) {
-            root.statusText = "解析任务正在完成，请稍候"
+            root.setActivity("解析任务正在完成，请稍候");
             return
         }
         root.requestId = ""
@@ -414,7 +535,7 @@ PluginWorkspacePage {
         root.pendingPathStack = []
         root.pendingRestorePath = []
         root.pendingRefresh = false
-        root.statusText = "解析已停止；已显示的目录保持不变"
+        root.setActivity("解析已停止；已显示的目录保持不变");
     }
 
     function openFolder(row) {
@@ -493,7 +614,7 @@ PluginWorkspacePage {
         if (root.requestId.length > 0)
             return
         root.treeParsing = false
-        root.statusText = "正在识别链接类型..."
+        root.setActivity("正在识别链接类型...");
         root.requestId = root.spPlugin.call("probe_link", {"url": url, "route": root.route}, 60000)
     }
 
@@ -526,6 +647,10 @@ PluginWorkspacePage {
             root.spPlugin.log("跳过下载：条目无 downloadUrl → " + String(entry && entry.name ? entry.name : "(空)"))
             return
         }
+        // 双击单个文件时，若上一批次已结束则开一个新批次，避免计数串味
+        if (root.batchFinished())
+            root.resetBatch()
+        root.clearActivity()
         var key = "gdrive-" + String(entry.rowId || entry.id || entry.name || "")
         var directory = root.buildSaveDirectory(entry)
         var requestId = root.spPlugin.download({
@@ -542,11 +667,15 @@ PluginWorkspacePage {
         root.queueByRequest[String(requestId)] = {
             "key": key,
             "name": String(entry.name || "file"),
+            "directory": directory,
             "taskId": "",
             "status": "submitted",
             "retries": 0
         }
         root.queuedCount++
+        root.batchTotal++
+        if (root.completionDirectory.length === 0 && directory.length > 0)
+            root.completionDirectory = directory
     }
 
     function collectFolderFiles(folderRow) {
@@ -637,6 +766,7 @@ PluginWorkspacePage {
         }
         root.spPlugin.log("开始下载选中项：文件 " + targets.length + " 个"
                           + (unresolved > 0 ? "；未解析子目录 " + unresolved + " 个" : ""))
+        root.resetBatch()
         for (var j = 0; j < targets.length; j++)
             root.startDownload(targets[j])
         var message = "已加入下载队列 " + targets.length + " 个任务"
@@ -692,7 +822,7 @@ PluginWorkspacePage {
             if (requestId !== root.requestId)
                 return
             if (progress && progress.message)
-                root.statusText = String(progress.message)
+                root.setActivity(String(progress.message));
             if (root.treeParsing && progress) {
                 root.treeProgress = Math.max(0, Math.min(1, Number(progress.value || 0)))
                 var details = progress.details || ({})
@@ -753,7 +883,7 @@ PluginWorkspacePage {
             root.requestId = ""
             root.treeParsing = false
             if (!response.ok) {
-                root.statusText = root.pendingRefresh ? "刷新失败，保留已有目录" : "解析失败"
+                root.setActivity(root.pendingRefresh ? "刷新失败，保留已有目录" : "解析失败");
                 root.spPlugin.showToast(String(response.error || "解析失败"), "error", "gdrive-resolve-fail")
                 root.pendingFolderId = ""
                 root.pendingPathStack = []
@@ -778,7 +908,7 @@ PluginWorkspacePage {
                     return
                 }
                 root.driveRows = []
-                root.statusText = "无法识别该链接是文件还是文件夹"
+                root.setActivity("无法识别该链接是文件还是文件夹");
                 root.spPlugin.showToast("无法识别该链接类型，请确认分享链接有效", "warning", "gdrive-kind-unknown")
                 return
             }
@@ -829,11 +959,11 @@ PluginWorkspacePage {
                 }
                 root.driveRows = [singleItem]
                 root.totalSizeText = root.formatBytes(Number(result.totalSize || 0))
-                root.statusText = "单文件解析完成；单击选中，点\"开始下载\"下载"
+                root.setActivity("单文件解析完成；单击选中，点\"开始下载\"下载");
             } else {
                 root.driveRows = []
                 root.totalSizeText = ""
-                root.statusText = "未解析到内容"
+                root.setActivity("未解析到内容");
             }
         }
 
@@ -847,7 +977,8 @@ PluginWorkspacePage {
         function onDownloadStarted(requestId, response) {
             var info = root.queueByRequest[String(requestId)]
             if (!info) {
-                info = {"key": "", "name": "下载任务", "taskId": "", "status": "submitted", "retries": 0}
+                info = {"key": "", "name": "下载任务", "directory": "",
+                        "taskId": "", "status": "submitted", "retries": 0}
                 root.queueByRequest[String(requestId)] = info
             }
             var taskId = ""
@@ -856,10 +987,11 @@ PluginWorkspacePage {
             }
             info.taskId = taskId
             if (response && response.ok === false) {
+                if (info.status !== "failed" && info.status !== "completed")
+                    root.recordFailure(info.name)
                 info.status = "failed"
-                root.failedCount++
-                root.queuedCount = Math.max(0, root.queuedCount - 1)
                 root.spPlugin.showToast("任务创建失败：" + String(info.name), "error", "gdrive-queue-fail")
+                root.updateBanner()
                 return
             }
             if (taskId.length > 0) {
@@ -872,21 +1004,42 @@ PluginWorkspacePage {
             if (!task)
                 return
             var taskId = String(task.taskId || task.task_id || task.id || "")
-            if (taskId.length === 0)
-                return
-            var info = root.queueByTask[String(taskId)]
-            if (!info)
-                return
+            var info = taskId.length > 0 ? root.queueByTask[String(taskId)] : null
+            if (!info) {
+                // 页面刷新或重新解析后队列映射可能丢失；用任务自带的显示名兜底，
+                // 不能静默丢弃，否则用户永远等不到完成提示。
+                var fallbackName = String(task.displayName || task.fileName
+                                          || task.name || "下载任务")
+                info = {"key": "", "name": fallbackName,
+                        "directory": String(task.directory || ""),
+                        "taskId": taskId, "status": "running", "retries": 0}
+                if (taskId.length > 0)
+                    root.queueByTask[String(taskId)] = info
+                if (root.batchTotal <= 0)
+                    root.batchTotal = 1
+                root.spPlugin.log("下载进度任务未登记，已兜底跟踪：" + fallbackName
+                                  + " state=" + String(task.state || task.status || ""))
+            }
             var state = String(task.state || task.status || "")
             var bytesReceived = Number(task.receivedBytes || task.completedBytes || task.bytesReceived || 0)
             var bytesTotal = Number(task.totalBytes || task.total || 0)
-            var isDone = /^done$|^completed$|^finished$/.test(state)
+            var isDone = /done|complete|finish|success/i.test(state)
             var isFailed = /fail|error|abort|interrupt|timeout/i.test(state)
+            if (info.status === "completed" || info.status === "failed") {
+                // 幂等守卫：同一任务的重复完成事件不再重复计数、不再重复提示
+                if (isDone || isFailed)
+                    root.updateBanner()
+                return
+            }
             if (isDone || (bytesTotal > 0 && bytesReceived >= bytesTotal)) {
                 info.status = "completed"
                 root.finishedCount++
                 root.queuedCount = Math.max(0, root.queuedCount - 1)
-                root.spPlugin.showToast("下载完成：" + String(info.name), "success", "gdrive-done-" + taskId)
+                root.completedList = root.completedList.concat([String(info.name)])
+                if (root.completionDirectory.length === 0
+                        && info.directory && String(info.directory).length > 0)
+                    root.completionDirectory = String(info.directory)
+                root.updateBanner()
             } else if (isFailed) {
                 if (root.autoRetry && info.retries < 5 && info.taskId.length > 0) {
                     info.retries++
@@ -895,13 +1048,13 @@ PluginWorkspacePage {
                     root.spPlugin.controlDownload("resume", info.taskId, false)
                 } else {
                     info.status = "failed"
-                    root.failedCount++
-                    root.queuedCount = Math.max(0, root.queuedCount - 1)
-                    root.spPlugin.showToast("下载失败：" + String(info.name), "error", "gdrive-fail-" + taskId)
+                    root.recordFailure(info.name)
+                    root.spPlugin.showToast("下载失败：" + String(info.name), "error", "gdrive-fail")
                 }
             } else {
+                if (info.status === "queued" || info.status === "submitted")
+                    root.queuedCount = Math.max(0, root.queuedCount - 1)
                 info.status = "running"
-                root.queuedCount = Math.max(0, root.queuedCount - 1)
             }
         }
 
@@ -1030,6 +1183,88 @@ PluginWorkspacePage {
                 width: root.actionButtonWidth
                 text: "选择"
                 onClicked: root.chooseDirectory()
+            }
+        }
+
+        AppGroupBox {
+            id: completionBanner
+            width: parent.width
+            visible: root.bannerVisible
+            height: visible ? implicitHeight : 0
+
+            Column {
+                width: parent.width
+                spacing: PluginTheme.dp(4)
+
+                Row {
+                    width: parent.width
+                    spacing: PluginTheme.dp(8)
+
+                    Text {
+                        width: Math.max(0, parent.width - closeBannerButton.width
+                                        - parent.spacing)
+                        height: PluginTheme.controlHeight
+                        verticalAlignment: Text.AlignVCenter
+                        text: root.failedList.length > 0
+                              ? "下载结束：成功 " + root.finishedCount + " 个，失败 "
+                                + root.failedList.length + " 个"
+                              : "下载完成：" + root.finishedCount + " 个文件"
+                        color: root.failedList.length > 0
+                               ? PluginTheme.danger : PluginTheme.primary
+                        font.family: PluginTheme.fontFamily
+                        font.pixelSize: PluginTheme.controlFontSize
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    AppButton {
+                        id: closeBannerButton
+                        text: "关闭"
+                        onClicked: root.bannerVisible = false
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    height: PluginTheme.controlHeight
+                    verticalAlignment: Text.AlignVCenter
+                    text: root.completionDirectory.length > 0
+                          ? "已保存到 " + root.elidePath(root.completionDirectory)
+                          : "已保存到 SP 临时下载目录（未设置保存目录）"
+                    color: PluginTheme.mutedText
+                    font.family: PluginTheme.fontFamily
+                    font.pixelSize: PluginTheme.smallFontSize
+                    elide: Text.ElideMiddle
+                }
+
+                Text {
+                    width: parent.width
+                    height: PluginTheme.controlHeight
+                    visible: root.failedList.length > 0
+                    verticalAlignment: Text.AlignVCenter
+                    text: "失败：" + root.failedList.slice(0, 3).join("、")
+                          + (root.failedList.length > 3
+                             ? " 等 " + root.failedList.length + " 个" : "")
+                    color: PluginTheme.danger
+                    font.family: PluginTheme.fontFamily
+                    font.pixelSize: PluginTheme.smallFontSize
+                    elide: Text.ElideRight
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: PluginTheme.dp(8)
+
+                    AppButton {
+                        text: "复制目录路径"
+                        onClicked: root.copyDirectory()
+                    }
+
+                    AppButton {
+                        text: "复制文件清单"
+                        onClicked: root.copyFileList()
+                    }
+                }
             }
         }
 
